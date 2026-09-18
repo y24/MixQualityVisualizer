@@ -24,7 +24,19 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\setup.ps1
 
 `setup.ps1`は、このフォルダー内の`.venv`へPython依存関係を、`node_modules`へElectronをインストールします。Pythonは`requirements-lock.txt`、Nodeは`package-lock.json`に固定したバージョンを使用します。PythonやNodeのグローバル環境は変更しません。
 
-現時点では開発用の起動形式です。Python同梱の配布用EXE／インストーラーはまだ作成していません。
+ソース版は開発用の起動形式です。Node.js不要のWindows配布フォルダーも生成できます（Python 3.13は別途必要）。Python同梱・単体EXE・インストーラー形式にはまだ対応していません。
+
+## Windows配布フォルダー
+
+```powershell
+npm.cmd run build:windows
+```
+
+`dist/MixAtlas-<解析バージョン>-<日時>/`に`MixAtlas.exe`とElectron本体、アプリ、`Setup.cmd`／`Setup-CUDA.cmd`を生成します。配布先はPython 3.13 x64を用意し、書き込み可能な場所へフォルダー全体を配置して、最初にSetupを実行します。その後はMixAtlas.exeを直接起動できます。配布先でNode.js／npmは不要です。セットアップには依存関係を取得するネット接続が必要です。
+
+作業環境の音源・解析履歴・分離ステム・モデル・仮想環境は配布物に含めません。Electronのライセンスを同梱します。Pythonライブラリのライセンスはセットアップ時に各パッケージとともに導入されます。Python同梱版やインストーラーではなく、EXEだけを取り出しての配布はできません。生成したEXEと既存Python環境を組み合わせた動作を確認していますが、別のクリーンPCでの初回セットアップは未検証です。
+
+配布方式は[Electronの手動パッケージ手順](https://www.electronjs.org/docs/latest/tutorial/application-distribution)を使用しています。
 
 ## 使い方
 
@@ -105,7 +117,7 @@ GPUを明示指定した場合、利用不能やメモリ不足を黙ってCPU�
 
 ## 試作指標の制約
 
-指標の数値計算とUIの動作を検証していますが、実際の歌唱曲を使った聴感評価・閾値調整はこれからです。
+指標の数値計算とUIの動作を検証しています。472.51秒の保存済み実曲でも、分離キャッシュを再利用し、追加機能導入前と従来の全時系列・全ヒートマップが完全一致することを確認しました。聴感評価・閾値調整はこれからです。
 
 - 歌唱／活動区間はエネルギーゲートによる暫定検出です。歌声認識モデルは未実装です。ボーカルタブで自動検出の対象を手動の歌唱区間に絞れます。「指定区間を優先」で、自動ゲートが除外した弱い歌声も集計できます。無音や測定下限以下は引き続き対象外です。
 - 帯域競合は「対象の有効帯域で、他パートのパワーが上回る割合」です。聞き取れない確率や心理音響的なマスキング閾値ではありません。
@@ -155,10 +167,13 @@ GPUを明示指定した場合、利用不能やメモリ不足を黙ってCPU�
 - `.data/separated/`：再利用可能な浮動小数点ステム。解析アルゴリズムの変更後も再分離を省けます。
 - `.data/analyses/`：解析JSONと試聴WAV。入力内容のSHA-256、モード、モデル、解析バージョンで識別します。自動分離時は実行デバイスとPyTorchビルドも識別に使います。
 - `.data/desktop/`・`.data/session/`：Electronのローカル設定・キャッシュ。
+- `dist/`：Windows配布フォルダー。Git管理対象外。
 - `.cache/`：依存関係のダウンロードやテスト用ファイル。
 - `demo-audio/`：自作の合成音源。実際の歌唱の分離精度評価には使えません。
 
 元音源は変更しません。解析履歴には現在の解析バージョンの結果だけを表示します。モデルやキャッシュの自動削除は行いません。試聴WAVと分離ステムは曲の長さに応じてディスクを使用します。
+
+現在の完了範囲と未対応事項は[実装状況](IMPLEMENTATION_STATUS.md)にまとめています。
 
 ## 開発・検証
 
@@ -166,7 +181,7 @@ GPUを明示指定した場合、利用不能やメモリ不足を黙ってCPU�
 npm.cmd run demo        # 合成した対象曲とリファレンスを生成
 npm.cmd run test:audio  # DSP・読み込み・キャッシュのテスト
 npm.cmd test            # Electronの操作・試聴テスト
-node --test tests/vocal-ranges.test.cjs # 歌唱区間の検証
+npm.cmd run test:helpers # 歌唱区間・拍グリッドの検証
 .\.venv\Scripts\python.exe -m scripts.smoke_separation  # FT実モデルの短時間スモークテスト
 ```
 

@@ -48,7 +48,9 @@ def test_separation_cache_survives_analysis_revision(tmp_path,monkeypatch):
     calls=[]
     def fake_separator(mix,model,device):
         calls.append(model)
-        return {k:mix/4 for k in worker.PARTS},device
+        rng=np.random.default_rng(19)
+        return {k:rng.standard_normal(mix.shape,dtype=np.float32)*(.03/(i+1))
+                for i,k in enumerate(('drums','bass','other','vocals'))},device
     monkeypatch.setattr(worker,'separate',fake_separator)
     monkeypatch.setattr(worker,'runtime_info',lambda: {'gpus':[], 'torch_version':'test'})
     job={'path':request['path'],'mode':'separate','model':'htdemucs'}

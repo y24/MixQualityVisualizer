@@ -8,7 +8,9 @@
     "start": "electron .",
     "test": "playwright test",
     "test:audio": ".venv\\Scripts\\python.exe scripts/test_audio.py",
-    "demo": ".venv\\Scripts\\python.exe scripts/make_demo.py"
+    "demo": ".venv\\Scripts\\python.exe scripts/make_demo.py",
+    "build:windows": "node scripts/build_windows.cjs",
+    "test:helpers": "node --test tests/vocal-ranges.test.cjs tests/rhythm.test.cjs"
   },
   "devDependencies": {
     "electron": "44.4.2",

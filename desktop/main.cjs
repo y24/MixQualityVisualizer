@@ -26,7 +26,7 @@ function worker(request, notify) {
   });
   let buffer = '', stderr = '', result, failure;
   const promise = new Promise((resolve, reject) => {
-    child.on('error', e => reject(new Error(`Pythonを起動できません。setup.ps1を実行してください。${e.message}`)));
+    child.on('error', e => reject(new Error(`Pythonを起動できません。配布版はSetup.cmd、ソース版はsetup.ps1を実行してください。${e.message}`)));
     child.stdout.setEncoding('utf8');
     child.stderr.setEncoding('utf8');
     child.stderr.on('data', text => { stderr = (stderr + text).slice(-12000); });

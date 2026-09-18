@@ -200,7 +200,7 @@ function renderDashboard() {
     const value=stat(r,key),reference=refStat(key),card=text('div','','card');card.append(text('div',label,'card-label'));
     const num=text('div',number(value,key==='correlation'?2:1),'card-number');num.append(text('small',unit));card.append(num);
     const delta=valid(value)&&valid(reference)?value-reference:null;
-    card.append(text('div',valid(delta)?`${delta>0?'+':''}${number(delta)} ${unit==='%'?'pt':unit} / REF ${number(reference)}`:state.references.length?'比較可能なリファレンス値なし':'リファレンスを追加して比較','card-delta'),text('div',key.startsWith('event:')?`${$('transient-band').selectedOptions[0].textContent} · ${note}`:key.startsWith('vocals_')&&state.vocalRanges[r.id]!=null?'手動指定区間 · '+note:note,'card-note'));$('cards').append(card);
+    card.append(text('div',valid(delta)?`${delta>0?'+':''}${number(delta)} ${unit==='%'?'pt':unit} / REF ${number(reference)}`:state.references.length?'比較可能なリファレンス値なし':'リファレンスを追加して比較','card-delta'),text('div',key.startsWith('event:')?`${$('transient-band').selectedOptions[0].textContent} / ${$('transient-type').value==='all'?'全タイプ':soundTypes[$('transient-type').value]} · ${note}`:key.startsWith('vocals_')&&state.vocalRanges[r.id]!=null?'手動指定区間 · '+note:note,'card-note'));$('cards').append(card);
   }
   $('timeline-title').textContent=v.title;$('timeline-description').textContent=v.description;
   $('time-window').hidden=!['vocals_db','drums_db','bass_db'].includes(v.line);
@@ -245,7 +245,7 @@ function renderRhythm(r){
   const setting=state.rhythmSettings[r.id],key=$('rhythm-metric').value;
   $('rhythm-bpm').value=setting?.bpm??data.bpm??'';$('rhythm-offset').value=setting?.offset??data.offset??0;
   const candidates=data.candidates.map(c=>`${number(c.bpm)} BPM`).join(' / ');
-  $('rhythm-status').textContent=`${setting?'手動指定':data.bpm?'自動推定':'自動推定は不確かです。BPMと開始位置を指定してください。'} · 周期性 ${number(data.periodicity,2)}（正解確率ではありません）${candidates?' · 候補 '+candidates:''}`;
+  $('rhythm-status').textContent=`${setting?'手動指定':data.bpm?'自動推定':'自動推定は不確かです。BPMと開始位置を指定してください。'} · 自動候補の周期性 ${number(data.periodicity,2)}（正解確率ではありません）${candidates?' · 候補 '+candidates:''}`;
   const beats=rhythmBeats(r),value=median(beats.map(b=>b[key]));
   const reference=median(refsFor(r).map(t=>median(rhythmBeats(t).map(b=>b[key]))));
   $('rhythm-summary').textContent=`${beats.length} 拍候補 / 測定可能 ${beats.filter(b=>valid(b[key])).length} · 中央値 ${number(value)} dB · REF ${number(reference)} dB · 差 ${valid(value)&&valid(reference)?number(value-reference):'—'} dB`;
