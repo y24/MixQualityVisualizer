@@ -58,6 +58,8 @@ def test_separation_cache_survives_analysis_revision(tmp_path,monkeypatch):
     assert first['id']!=second['id']
     assert calls==['htdemucs']
     assert second['parts']['vocals']['summary']['median']==pytest.approx(first['parts']['vocals']['summary']['median'],abs=.001)
+    assert second['series']==first['series']
+    assert second['heatmaps']==first['heatmaps']
 
 
 def test_device_choice_reaches_separator_and_uses_distinct_caches(tmp_path,monkeypatch):

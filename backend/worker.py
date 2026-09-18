@@ -130,6 +130,10 @@ def run(request):
             for name,x in stems.items():
                 sf.write(separation_dir/f"{name}.wav",x,SR,subtype="FLOAT")
             manifest.write_text(json.dumps({"device":device,"model":model}),encoding="utf-8")
+    if mode == "separate":
+        # Demucs model order, also used for legacy manifests. Float32 summation
+        # must use the same order on fresh and cached separation paths.
+        stems = {name: stems[name] for name in ("drums", "bass", "other", "vocals")}
     result = analyze(mix, stems, metadata, progress)
     # One shared preview gain avoids clipping without changing stem balance.
     peak = max(float(np.max(np.abs(x))) for x in [mix, *stems.values()])
