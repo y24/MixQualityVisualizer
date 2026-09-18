@@ -121,6 +121,41 @@ test('CUDA device choice is visible and persists after reload',async()=>{
   await page.locator('#import-close').click();
 });
 
+test('manual vocal ranges mask values, validate input, persist and reset',async()=>{
+  await page.locator('#demo').click();
+  await expect(page.locator('#dashboard')).toBeVisible({timeout:90000});
+  await expect(page.locator('#progress-panel')).toBeHidden({timeout:90000});
+  await page.getByRole('button',{name:'ボーカル',exact:true}).click();
+  await page.locator('#vocal-auto').click();
+  await page.locator('#vocal-start').fill('4');await page.locator('#vocal-end').fill('8');
+  await page.locator('#vocal-add').click();
+  await expect(page.locator('#vocal-status')).toContainText('手動指定 1');
+  await expect(page.locator('#cards')).toContainText('手動指定区間');
+  const exportFile=path.resolve(__dirname,`../../test-results/vocal-ranges-${Date.now()}.json`);
+  await app.evaluate(({dialog},file)=>{dialog.showSaveDialog=async()=>({canceled:false,filePath:file});},exportFile);
+  await page.locator('#export').click();
+  const fs=require('node:fs');
+  await expect.poll(()=>fs.existsSync(exportFile)).toBe(true);
+  const exported=JSON.parse(fs.readFileSync(exportFile,'utf8'));
+  expect(exported.vocal_ranges[exported.target.id]).toEqual([[4,8]]);
+  expect(await page.evaluate(()=>values(state.target,'vocals_db').filter(valid).length)).toBeGreaterThan(0);
+  expect(await page.evaluate(()=>vocalValue(state.target,'vocals_db',0,5))).toBeNull();
+  expect(await page.evaluate(()=>vocalValue(state.target,'drums_db',0,5))).toBe(5);
+  await page.locator('#vocal-end').fill('999');await page.locator('#vocal-add').click();
+  await expect(page.locator('#vocal-error')).toContainText('音源の長さ以内');
+  await page.reload();
+  await page.locator('#demo').click();
+  await expect(page.locator('#progress-panel')).toBeHidden({timeout:90000});
+  await page.getByRole('button',{name:'ボーカル',exact:true}).click();
+  await expect(page.locator('#vocal-ranges')).toContainText('4.00 – 8.00');
+  await page.screenshot({path:'test-results/desktop-vocal-ranges.png',fullPage:true});
+  await page.locator('#vocal-ranges button').click();
+  await expect(page.locator('#vocal-status')).toContainText('対象区間なし');
+  expect(await page.evaluate(()=>stat(state.target,'vocals_db'))).toBeNull();
+  await page.locator('#vocal-auto').click();
+  expect(await page.evaluate(()=>stat(state.target,'vocals_db'))).not.toBeNull();
+});
+
 test('explicit CUDA choice runs a real separation from the UI',async()=>{
   test.skip(process.env.MQV_TEST_CUDA!=='1','Opt-in real-model GPU test; requires smoke fixture and model files.');
   const fixture=path.resolve(__dirname,'../../.data/smoke/separation-smoke.wav');

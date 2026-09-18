@@ -1,7 +1,7 @@
 'use strict';
 const $ = id => document.getElementById(id);
 const api = window.mixApp;
-const state = { target:null, references:[], tab:'overview', ranges:{}, busy:false, role:'target', pending:null, stems:{}, event:null, hardware:null };
+const state = { target:null, references:[], tab:'overview', ranges:{}, busy:false, role:'target', pending:null, stems:{}, event:null, hardware:null, vocalRanges:{} };
 const names = {vocals:'ボーカル',drums:'ドラム',bass:'ベース',other:'その他'};
 const sourceNames = {mix:'元ステレオ',mid:'Midのみ',side:'Sideのみ',mono:'モノラル',...names};
 const number = (v,d=1) => typeof v==='number' && Number.isFinite(v) ? v.toFixed(d) : '—';
@@ -12,7 +12,32 @@ const duration = s => `${Math.floor(s/60)}:${String(Math.floor(s%60)).padStart(2
 function notice(message='') { $('notice').textContent=message;$('notice').hidden=!message; }
 function range(track) { return state.ranges[track.id] || [0,track.duration]; }
 function indices(track) { const [start,end]=range(track);return track.times.map((t,i)=>t>=start&&t<end ? i:-1).filter(i=>i>=0); }
-function values(track,key) { const a=track.series[key]||[];return indices(track).map(i=>a[i]); }
+function values(track,key) { const a=track.series[key]||[];return indices(track).map(i=>vocalValue(track,key,i,a[i])); }
+function vocalValue(track,key,i,value) { return key.startsWith('vocals_')&&!VocalRanges.includes(state.vocalRanges[track.id],track.times[i])?null:value; }
+function saveVocalRanges(ranges) {
+  localStorage.setItem('vocal-ranges:'+state.target.id,JSON.stringify(ranges));
+  state.vocalRanges[state.target.id]=ranges;
+  renderDashboard();
+}
+$('vocal-add').onclick=()=>{
+  if(!state.target)return;
+  try {
+    if(!$('vocal-start').value.trim()||!$('vocal-end').value.trim())throw new Error('開始秒と終了秒を入力してください。');
+    const ranges=VocalRanges.normalize([...(state.vocalRanges[state.target.id]||[]),[Number($('vocal-start').value),Number($('vocal-end').value)]],state.target.duration);
+    $('vocal-error').textContent='';saveVocalRanges(ranges);
+  }catch(e){$('vocal-error').textContent=e.message;}
+};
+$('vocal-auto').onclick=()=>{if(state.target){$('vocal-error').textContent='';saveVocalRanges(null);}};
+function renderVocalEditor(r) {
+  $('vocal-editor').hidden=state.tab!=='vocals'||!r.parts.vocals;
+  const ranges=state.vocalRanges[r.id];
+  $('vocal-status').textContent=ranges==null?'自動検出を使用中':ranges.length?`手動指定 ${ranges.length} 区間（比較区間との共通部分を集計）`:'手動指定：対象区間なし';
+  $('vocal-ranges').replaceChildren();
+  for(const [i,pair] of (ranges||[]).entries()){
+    const row=text('div','','metric-row');row.append(text('span',`${pair[0].toFixed(2)} – ${pair[1].toFixed(2)} 秒`));
+    const remove=text('button','削除','text-button');remove.onclick=()=>saveVocalRanges(ranges.filter((_,j)=>i!==j));row.append(remove);$('vocal-ranges').append(row);
+  }
+}
 function transientData(track) { const band=$('transient-band').value;return band==='full'?track.transients:track.transients?.bands?.[band]; }
 $('transient-band').onchange=()=>{state.event=null;renderDashboard();};
 function stat(track,key) {
@@ -25,6 +50,10 @@ function setBusy(busy) { state.busy=busy;$('progress-panel').hidden=!busy;for(co
 api?.onProgress(msg=>{ $('progress').value=msg.percent;$('progress-message').textContent=msg.message; });
 
 function addResult(result,role) {
+  if(!(result.id in state.vocalRanges)){
+    try { const saved=JSON.parse(localStorage.getItem('vocal-ranges:'+result.id));state.vocalRanges[result.id]=saved==null?null:VocalRanges.normalize(saved,result.duration); }
+    catch { state.vocalRanges[result.id]=null; }
+  }
   if(role==='target') state.target=result;
   else if(!state.references.some(r=>r.id===result.id)) state.references.push(result);
   if(!state.target) {state.target=result;state.references=state.references.filter(r=>r.id!==result.id);}
@@ -102,7 +131,7 @@ $('history-close').onclick=()=>$('history-dialog').close();
 $('export').onclick=async()=>{
   try {
     const strip=r=>{const {media,...data}=r;return data;};
-    await api.export({target:strip(state.target),references:state.references.map(strip),ranges:state.ranges,transient_band:$('transient-band').value,exported_at:new Date().toISOString()});
+    await api.export({target:strip(state.target),references:state.references.map(strip),ranges:state.ranges,transient_band:$('transient-band').value,vocal_ranges:state.vocalRanges,exported_at:new Date().toISOString()});
   }catch(e){notice(e.message);}
 };
 document.querySelectorAll('#tabs button').forEach(b=>b.onclick=()=>{state.tab=b.dataset.tab;state.event=null;renderDashboard();});
@@ -144,12 +173,13 @@ function renderDashboard() {
   const v=views[state.tab];$('track-title').textContent=r.name;
   $('track-meta').textContent=`${duration(r.duration)}  /  ${(r.metadata.source_sample_rate/1000).toFixed(1)} kHz  /  ${r.metadata.source_channels===1?'MONO':'STEREO'}  /  ${number(r.loudness_lufs)} LUFS  /  ${r.model||'入力音源'}${r.device?' · '+(r.device_label||r.device.toUpperCase())+'で分離':''}${r.cached?' / 保存済み解析':r.separation_cached?' / 保存済み分離ステム':''}`;
   $('range-start').value=range(r)[0].toFixed(2);$('range-end').value=range(r)[1].toFixed(2);$('range-end').max=r.duration;
+  renderVocalEditor(r);
   $('cards').replaceChildren();
   for(const [key,label,unit,note] of v.cards){
     const value=stat(r,key),reference=refStat(key),card=text('div','','card');card.append(text('div',label,'card-label'));
     const num=text('div',number(value,key==='correlation'?2:1),'card-number');num.append(text('small',unit));card.append(num);
     const delta=valid(value)&&valid(reference)?value-reference:null;
-    card.append(text('div',valid(delta)?`${delta>0?'+':''}${number(delta)} ${unit==='%'?'pt':unit} / REF ${number(reference)}`:state.references.length?'比較可能なリファレンス値なし':'リファレンスを追加して比較','card-delta'),text('div',key.startsWith('event:')?`${$('transient-band').selectedOptions[0].textContent} · ${note}`:note,'card-note'));$('cards').append(card);
+    card.append(text('div',valid(delta)?`${delta>0?'+':''}${number(delta)} ${unit==='%'?'pt':unit} / REF ${number(reference)}`:state.references.length?'比較可能なリファレンス値なし':'リファレンスを追加して比較','card-delta'),text('div',key.startsWith('event:')?`${$('transient-band').selectedOptions[0].textContent} · ${note}`:key.startsWith('vocals_')&&state.vocalRanges[r.id]!=null?'手動指定区間 · '+note:note,'card-note'));$('cards').append(card);
   }
   $('timeline-title').textContent=v.title;$('timeline-description').textContent=v.description;
   $('time-window').hidden=!['vocals_db','drums_db','bass_db'].includes(v.line);
@@ -180,8 +210,8 @@ function surface(id){const c=$(id),dpr=window.devicePixelRatio||1,w=Math.max(200
 function blank(s,message){s.ctx.fillStyle='#8996a5';s.ctx.textAlign='center';s.ctx.fillText(message,s.w/2,s.h/2);}
 function grid(s,min,max,unit=''){const{ctx,w,h}=s;ctx.strokeStyle='#2a333d';ctx.fillStyle='#82909f';ctx.textAlign='right';for(let i=0;i<5;i++){const y=15+(h-45)*i/4;ctx.beginPath();ctx.moveTo(48,y);ctx.lineTo(w-12,y);ctx.stroke();ctx.fillText(number(max-(max-min)*i/4,unit==='%'?0:1)+unit,41,y+3);}ctx.textAlign='left';ctx.fillText('0%',48,h-6);ctx.textAlign='right';ctx.fillText('100%',w-12,h-6);}
 function drawTimeline(r,key){
-  const s=surface('timeline'),ids=indices(r),vals=ids.map(i=>r.series[key]?.[i]);
-  const refs=refsFor(r).map(t=>{const ix=indices(t);return ix.map(i=>t.series[key]?.[i]);}).filter(a=>a.some(valid));
+  const s=surface('timeline'),ids=indices(r),vals=ids.map(i=>vocalValue(r,key,i,r.series[key]?.[i]));
+  const refs=refsFor(r).map(t=>{const ix=indices(t);return ix.map(i=>vocalValue(t,key,i,t.series[key]?.[i]));}).filter(a=>a.some(valid));
   const combined=[...vals,...refs.flat()].filter(valid);
   if(!combined.length){blank(s,'この項目にはステム解析または有効区間が必要です');return;}
   const pct=key.endsWith('_pct')||key.endsWith('_competition');
@@ -201,7 +231,7 @@ function drawHeatmap(r,key){
   for(let j=0;j<columns;j++){
     const a=Math.floor(j*ids.length/columns),b=Math.max(a+1,Math.floor((j+1)*ids.length/columns));
     for(let k=0;k<bands;k++){
-      const val=median(ids.slice(a,b).map(i=>data[i][k]));if(!valid(val))continue;
+      const val=median(ids.slice(a,b).map(i=>vocalValue(r,key,i,data[i][k])));if(!valid(val))continue;
       const f=key==='side_pct'?val/100:key==='spectrum_db'?(val+75)/65:key==='mono_db'?-val/24:key==='band_correlation'?(1-val)/2:(18-val)/36;
       const t=Math.max(0,Math.min(1,f));ctx.fillStyle=`rgb(${Math.round(35+207*t)},${Math.round(72+107*t)},${Math.round(94+17*t)})`;
       ctx.fillRect(left+j*pw/columns,top+(bands-1-k)*ph/bands,Math.ceil(pw/columns),Math.ceil(ph/bands));
