@@ -1,0 +1,128 @@
+const { test, expect, _electron } = require('@playwright/test');
+const path = require('node:path');
+let app,page;
+test.describe.configure({mode:'serial'});
+test.beforeAll(async()=>{
+  app=await _electron.launch({args:[path.resolve(__dirname,'../..')],env:{...process.env,MQV_TEST_PROFILE:'1',ELECTRON_DISABLE_SECURITY_WARNINGS:'true'}});
+  page=await app.firstWindow();
+});
+test.afterAll(async()=>{await app?.close();});
+test('desktop imports synthetic stems, analyzes, plays and compares cached references',async()=>{
+  const errors=[];page.on('pageerror',e=>errors.push(e.message));
+  await expect(page.getByRole('heading',{name:'最初のミックスを読み込む'})).toBeVisible();
+  await expect(page.locator('#engine-status')).toContainText('Python',{timeout:30000});
+  await page.getByRole('button',{name:'合成デモで試す →'}).click();
+  await expect(page.locator('#dashboard')).toBeVisible({timeout:90000});
+  await expect(page.locator('#cards .card-number').first()).not.toHaveText('—dB');
+  await expect(page.locator('#progress-panel')).toBeHidden();
+  await page.getByRole('button',{name:'ドラム',exact:true}).click();
+  await expect(page.locator('#transient-panel')).toBeVisible();
+  await expect(page.locator('#event-count')).not.toHaveText('0 EVENTS');
+  await page.locator('#listen-source').selectOption('drums');
+  await page.waitForFunction(()=>document.getElementById('audio').readyState>=1);
+  const playback=await page.locator('#audio').evaluate(async a=>{a.volume=0;await a.play();return{duration:a.duration,paused:a.paused};});
+  expect(playback.duration).toBeGreaterThan(20);expect(playback.paused).toBe(false);
+  await page.locator('#audio').evaluate(a=>a.pause());
+  await page.getByRole('button',{name:'M/S・音像',exact:true}).click();
+  await expect(page.locator('#cards')).toContainText('左右相関');
+  await page.locator('#range-start').fill('8');await page.locator('#range-end').fill('16');await page.locator('#range-apply').click();
+  await expect(page.locator('#range-start')).toHaveValue('8.00');
+  // Native dialogs are stubbed; all import/analysis IPC and DSP are real.
+  const reference=path.resolve(__dirname,'../../demo-audio/reference');
+  await app.evaluate(({dialog},folder)=>{
+    const files=['mix','vocals','drums','bass','other'].map(name=>`${folder}/${name}.wav`);
+    dialog.showOpenDialog=async()=>({canceled:false,filePaths:[files.shift()]});
+  },reference);
+  await page.getByRole('button',{name:'リファレンスを追加',exact:true}).click();
+  await page.locator('#choose-mix').click();await page.locator('#import-mode').selectOption('stems');
+  for(let i=0;i<4;i++)await page.locator('#stem-fields button').nth(i).click();
+  await page.locator('#import-submit').click();
+  await expect(page.locator('#progress-panel')).toBeHidden({timeout:90000});
+  await expect(page.locator('#reference-list .track')).toHaveCount(1);
+  await expect(page.locator('#cards .card-delta').first()).toContainText('REF');
+  await page.locator('#spatial-metric').selectOption('band_correlation');
+  await expect(page.locator('#heatmap-title')).toHaveText('帯域別の左右相関');
+  await page.locator('#spatial-metric').selectOption('mono_db');
+  await expect(page.locator('#heatmap-title')).toHaveText('帯域別のモノラル合成差');
+  await page.screenshot({path:'test-results/desktop-spatial.png',fullPage:true});
+  await page.getByRole('button',{name:'ボーカル',exact:true}).click();
+  await page.locator('#component').selectOption('side');
+  await expect(page.locator('#heatmap-legend')).toContainText('対象外');
+  await page.screenshot({path:'test-results/desktop-vocals.png',fullPage:true});
+  await page.getByRole('button',{name:'ドラム',exact:true}).click();
+  const delta=await page.locator('#cards .card-delta').first().innerText();
+  expect(parseFloat(delta)).toBeGreaterThan(2);
+  expect(errors).toEqual([]);
+});
+test('canceling analysis preserves the current result and allows a new job',async()=>{
+  const previous=await page.locator('#track-title').innerText();
+  const fixture=path.resolve(__dirname,'../../demo-audio/mix.wav');
+  await app.evaluate(({dialog},file)=>{dialog.showOpenDialog=async()=>({canceled:false,filePaths:[file]});},fixture);
+  await page.getByRole('button',{name:'＋ 解析する音源'}).click();
+  await page.locator('#choose-mix').click();await page.locator('#import-mode').selectOption('separate');
+  await page.locator('#import-submit').click();await page.locator('#cancel').click();
+  await expect(page.locator('#progress-panel')).toBeHidden({timeout:15000});
+  await expect(page.locator('#notice')).toContainText('キャンセル');
+  await expect(page.locator('#track-title')).toHaveText(previous);
+  await page.getByRole('button',{name:'合成デモで試す →'}).click();
+  await expect(page.locator('#progress-panel')).toBeHidden({timeout:90000});
+  await expect(page.locator('#dashboard')).toBeVisible();
+});
+test('JSON export retains selected ranges and has no transient media URLs',async()=>{
+  const filename=path.resolve(__dirname,'../../test-results/export.json');
+  await app.evaluate(({dialog},file)=>{dialog.showSaveDialog=async()=>({canceled:false,filePath:file});},filename);
+  await page.locator('#export').click();
+  const fs=require('node:fs');
+  await expect.poll(()=>fs.existsSync(filename)).toBe(true);
+  const exported=JSON.parse(fs.readFileSync(filename,'utf8'));
+  expect(exported.target.series.vocals_db.length).toBeGreaterThan(0);
+  expect(exported.references).toHaveLength(1);
+  expect(exported.target.media).toBeUndefined();
+});
+test('import validation and canceling a dialog preserve analysis',async()=>{
+  await page.getByRole('button',{name:'＋ 解析する音源'}).click();
+  await page.getByRole('button',{name:'解析を開始 →'}).click();
+  await expect(page.locator('#import-error')).toHaveText('ミックス音源を選んでください。');
+  await page.locator('#import-mode').selectOption('separate');
+  await page.locator('#device').selectOption('cpu');
+  await expect(page.locator('#device-hint')).toContainText('GPUは使用しません');
+  await page.locator('#device').selectOption('auto');
+  await page.locator('#import-mode').selectOption('stems');
+  await expect(page.locator('#stem-fields button')).toHaveCount(4);
+  await page.locator('#import-close').click();
+  await expect(page.locator('#dashboard')).toBeVisible();
+});
+
+test('CUDA device choice is visible and persists after reload',async()=>{
+  await page.getByRole('button',{name:'＋ 解析する音源'}).click();
+  await page.locator('#import-mode').selectOption('separate');
+  const options=await page.locator('#device option').evaluateAll(nodes=>nodes.map(n=>({value:n.value,label:n.textContent})));
+  const gpu=options.find(o=>o.value.startsWith('cuda:'));
+  if(gpu){
+    await page.locator('#device').selectOption(gpu.value);
+    await expect(page.locator('#device-hint')).toContainText('VRAM');
+    await page.screenshot({path:'test-results/desktop-gpu-selector.png'});
+    await page.reload();
+    await expect(page.locator('#engine-status')).toContainText('CUDA',{timeout:30000});
+    await page.getByRole('button',{name:'＋ 解析する音源'}).click();
+    await expect(page.locator('#device')).toHaveValue(gpu.value);
+  }else{
+    await expect(page.locator('#device option')).toHaveCount(2);
+  }
+  await page.locator('#device').selectOption('auto');
+  await page.locator('#import-close').click();
+});
+
+test('explicit CUDA choice runs a real separation from the UI',async()=>{
+  test.skip(process.env.MQV_TEST_CUDA!=='1','Opt-in real-model GPU test; requires smoke fixture and model files.');
+  const fixture=path.resolve(__dirname,'../../.data/smoke/separation-smoke.wav');
+  await app.evaluate(({dialog},file)=>{dialog.showOpenDialog=async()=>({canceled:false,filePaths:[file]});},fixture);
+  await page.getByRole('button',{name:'＋ 解析する音源'}).click();
+  await page.locator('#choose-mix').click();await page.locator('#import-mode').selectOption('separate');
+  await page.locator('#device').selectOption('cuda:0');
+  const deviceName=(await page.locator('#device option:checked').innerText()).replace(/^GPU：?\s*/, '').replace(/\s*[（(].*$/, '');
+  await page.locator('#import-submit').click();
+  await expect(page.locator('#track-title')).toHaveText('separation-smoke',{timeout:90000});
+  await expect(page.locator('#track-meta')).toContainText(`${deviceName}で分離`);
+  await expect(page.locator('#progress-panel')).toBeHidden();
+});

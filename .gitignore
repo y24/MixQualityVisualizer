@@ -1,0 +1,10 @@
+.venv/
+.cache/
+.data/
+node_modules/
+__pycache__/
+.pytest_cache/
+test-results/
+playwright-report/
+demo-audio/
+*.log

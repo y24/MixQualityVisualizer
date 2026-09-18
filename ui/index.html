@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; media-src 'self' mqv:; connect-src 'none'; object-src 'none'; base-uri 'none'">
+  <title>Mix Atlas — ミックス解析</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <aside class="sidebar">
+    <div class="brand"><span class="brand-icon">Ⅲ</span><div>Mix Atlas<small>LISTEN WITH PERSPECTIVE</small></div></div>
+    <div class="section-label">ワークスペース <span>01</span></div>
+    <button id="add-target" class="primary full">＋ 解析する音源</button>
+    <div id="target-list" class="track-list"><p class="quiet">ミックスを選択してください</p></div>
+    <div class="section-label reference-label">リファレンス <button id="add-reference" class="icon" title="リファレンスを追加" aria-label="リファレンスを追加">＋</button></div>
+    <div id="reference-list" class="track-list"><p class="quiet">目標の音を並べて比較</p></div>
+    <button id="history" class="secondary full">保存済みの解析を開く</button>
+    <div class="sidebar-bottom"><span class="status-dot"></span> LOCAL AUDIO ONLY<p id="engine-status">解析エンジンを確認中…</p><button id="demo" class="text-button">合成デモで試す →</button></div>
+  </aside>
+  <main>
+    <header><div><div class="eyebrow">MIX ANALYSIS / WORKSPACE</div><h1 id="track-title">音の関係を、見える形に。</h1><p id="track-meta">ボーカル、リズム、帯域、音像。リファレンスと聴き比べるための地図。</p></div><button id="export" class="secondary" disabled>解析をエクスポート ↗</button></header>
+    <div id="notice" class="notice" role="status" hidden></div>
+    <div id="progress-panel" class="progress-panel" hidden><div><span class="spinner"></span><strong id="progress-message">準備中</strong><button id="cancel" class="text-button">キャンセル</button></div><progress id="progress" max="100" value="0"></progress></div>
+    <nav id="tabs" aria-label="分析項目">
+      <button data-tab="overview" class="active">概要</button><button data-tab="vocals">ボーカル</button><button data-tab="drums">ドラム</button><button data-tab="bass">ベース・低域</button><button data-tab="spatial">M/S・音像</button><button data-tab="density">密集度・競合</button>
+    </nav>
+    <section id="empty" class="empty">
+      <div class="empty-visual" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+      <div class="eyebrow">YOUR MIX, IN CONTEXT</div><h2>最初のミックスを読み込む</h2><p>完成音源から4パートを分離。<br>ステムがあれば、そのまま詳しい解析に使えます。</p>
+      <button id="empty-import" class="primary">音源を選択 →</button><small>WAV / FLAC / MP3 ・ 音源はPCの外に送信されません</small>
+      <div class="empty-features"><div><b>01</b>声と伴奏の距離</div><div><b>02</b>リズムと低域の存在感</div><div><b>03</b>広がりと音の重なり</div></div>
+    </section>
+    <section id="dashboard" hidden>
+      <div class="range-bar"><div><span class="eyebrow">比較する区間</span><span class="subtle">曲ごとに近い編成の区間を選択</span></div><div><label>開始 <input id="range-start" type="number" min="0" step="0.1" value="0"> 秒</label><span>—</span><label>終了 <input id="range-end" type="number" min="0" step="0.1"> 秒</label><button id="range-apply" class="secondary small">適用</button><button id="range-reset" class="text-button">全体</button></div></div>
+      <div id="cards" class="cards"></div>
+      <div class="panel timeline-panel"><div class="panel-heading"><div><h2 id="timeline-title">相対音量の推移</h2><p id="timeline-description"></p></div><div class="legend"><span class="target-key">解析対象</span><span class="reference-key">リファレンス中央値</span><select id="time-window" aria-label="時間窓"><option value="momentary">400 ms</option><option value="short">3 秒</option></select></div></div><canvas id="timeline" height="210" aria-label="時間推移グラフ"></canvas><div class="chart-footer"><span>クリックで該当位置を試聴</span><span>比較区間を0–100%に揃えて表示（拍・構成の自動対応なし）</span></div></div>
+      <div class="two-columns"><div class="panel"><div class="panel-heading"><div><h2 id="heatmap-title">帯域の分布</h2><p id="heatmap-description"></p></div><select id="component" aria-label="競合を解析する成分"><option value="stereo">Stereo</option><option value="mid">Mid</option><option value="side">Side</option></select><select id="spatial-metric" aria-label="音像の帯域指標" hidden><option value="side_pct">Side比率</option><option value="mono_db">モノラル合成差</option><option value="band_correlation">帯域別左右相関</option></select></div><canvas id="heatmap" height="230" aria-label="時間周波数ヒートマップ"></canvas><div id="heatmap-legend" class="chart-footer"></div></div><div class="panel"><div class="panel-heading"><div><h2 id="detail-title">帯域バランス</h2><p id="detail-description">選択区間の特徴</p></div></div><div id="detail"></div></div></div>
+      <div id="transient-panel" class="panel" hidden><div class="panel-heading"><div><h2>一打の形を見る</h2><p>クリックでイベントを選択 ・ 横軸：非ドラムに対する打音の相対レベル / 縦軸：アタック／ボディ比</p></div><span id="event-count" class="badge"></span></div><div class="two-columns chart-columns"><canvas id="scatter" height="220" aria-label="ドラムイベントの散布図"></canvas><div><canvas id="envelope" height="180" aria-label="選択した打音の包絡"></canvas><p id="event-detail" class="subtle"></p></div></div></div>
+      <div class="panel notes"><h2>この数値の読み方</h2><div id="notes"></div><details><summary>測定条件・制約</summary><div id="method"></div></details></div>
+    </section>
+    <footer>Mix Atlas <span>v0.1 · 数値は判断材料です。最後は音を聴いて確かめてください。</span></footer>
+  </main>
+  <div class="transport"><div class="transport-label"><span class="status-dot"></span><div><strong id="playing-name">音源未選択</strong><small id="preview-gain">ゲイン補正なし</small></div></div><select id="listen-track" aria-label="試聴する曲" disabled></select><select id="listen-source" aria-label="試聴する成分" disabled><option value="mix">元ステレオ</option></select><audio id="audio" controls preload="metadata"></audio></div>
+  <dialog id="import-dialog"><form id="import-form">
+    <div class="dialog-heading"><div class="eyebrow">IMPORT AUDIO</div><h2 id="import-title">解析する音源</h2></div>
+    <button id="choose-mix" type="button" class="file-picker">＋ ミックス音源を選択</button>
+    <label class="field-label">解析方法<select id="import-mode"><option value="separate">自動で4パートに分離</option><option value="stems">書き出した4ステムを指定</option><option value="mix">元音源のみ（帯域・M/S・密集度）</option></select></label>
+    <div id="model-field">
+      <label class="field-label">分離モデル<select id="model"><option value="htdemucs_ft">精度優先 / HT Demucs FT（時間がかかります）</option><option value="htdemucs">標準 / HT Demucs</option></select></label>
+      <label class="field-label">分離デバイス<select id="device"><option value="auto">自動（GPUを優先）</option><option value="cpu">CPU</option></select></label>
+      <p id="device-hint" class="subtle">GPUの利用可否を確認中…</p>
+      <p class="subtle">初回のみモデルをダウンロードします。音源は外部送信しません。</p>
+    </div>
+    <div id="stem-fields" hidden></div><p id="import-error" class="error" role="alert"></p>
+    <div class="dialog-actions"><button id="import-close" type="button" class="secondary">閉じる</button><button id="import-submit" type="submit" class="primary">解析を開始 →</button></div>
+  </form></dialog>
+  <dialog id="history-dialog"><div class="dialog-heading"><div class="eyebrow">LOCAL CACHE</div><h2>保存済みの解析</h2></div><div id="history-items"></div><div class="dialog-actions"><button id="history-close" class="secondary">閉じる</button></div></dialog>
+  <script src="app.js"></script>
+</body>
+</html>

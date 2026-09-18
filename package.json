@@ -1,0 +1,17 @@
+{
+  "name": "mix-quality-visualizer",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Local mix analysis and reference comparison",
+  "main": "desktop/main.cjs",
+  "scripts": {
+    "start": "electron .",
+    "test": "playwright test",
+    "test:audio": ".venv\\Scripts\\python.exe scripts/test_audio.py",
+    "demo": ".venv\\Scripts\\python.exe scripts/make_demo.py"
+  },
+  "devDependencies": {
+    "electron": "44.4.2",
+    "@playwright/test": "1.63.0"
+  }
+}
