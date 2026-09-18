@@ -18,6 +18,12 @@ test('desktop imports synthetic stems, analyzes, plays and compares cached refer
   await page.getByRole('button',{name:'ドラム',exact:true}).click();
   await expect(page.locator('#transient-panel')).toBeVisible();
   await expect(page.locator('#event-count')).not.toHaveText('0 EVENTS');
+  await page.locator('#transient-band').selectOption('low');
+  await expect(page.locator('#cards')).toContainText('低域 20–200 Hz');
+  await expect(page.locator('#event-count')).not.toHaveText('0 EVENTS');
+  await expect(page.locator('#event-detail')).toContainText('立ち上がり');
+  await page.screenshot({path:'test-results/desktop-drum-bands.png',fullPage:true});
+  await page.locator('#transient-band').selectOption('full');
   await page.locator('#listen-source').selectOption('drums');
   await page.waitForFunction(()=>document.getElementById('audio').readyState>=1);
   const playback=await page.locator('#audio').evaluate(async a=>{a.volume=0;await a.play();return{duration:a.duration,paused:a.paused};});
@@ -78,6 +84,8 @@ test('JSON export retains selected ranges and has no transient media URLs',async
   expect(exported.target.series.vocals_db.length).toBeGreaterThan(0);
   expect(exported.references).toHaveLength(1);
   expect(exported.target.media).toBeUndefined();
+  expect(exported.transient_band).toBe('full');
+  expect(exported.target.transients.bands.low.events.length).toBeGreaterThan(0);
 });
 test('import validation and canceling a dialog preserve analysis',async()=>{
   await page.getByRole('button',{name:'＋ 解析する音源'}).click();

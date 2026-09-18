@@ -205,6 +205,35 @@ def transients(x):
             "summary": {k: summary([e[k] for e in events]) for k in ("attack_ms", "attack_body_db", "crest_db", "decay_ms")}}
 
 
+def relative_events(x, rest):
+    result = transients(x)
+    for event in result["events"]:
+        lo = int(event["time"]*SR)
+        hi = min(len(x), int((event["time"]+.05)*SR))
+        event["relative_db"] = float(db_ratio(np.mean(x[lo:hi]**2), np.mean(rest[lo:hi]**2)))
+    return result
+
+
+def band_transients(x, rest, max_freq=20000):
+    """Independent onsets per band; causal filters preserve absence of pre-ringing.
+
+    Timing/decay includes filter response and must not be treated as instrument
+    identity or compared with unfiltered onset timing.
+    """
+    bands = {}
+    for name, lo, hi in (("low",20,200),("mid",200,2000),("high",2000,20000)):
+        if max_freq < hi:
+            bands[name] = None
+            continue
+        sos = signal.butter(2, (lo,hi), btype="bandpass", fs=SR, output="sos")
+        filtered = signal.sosfilt(sos, x, axis=0)
+        # Keep peak memory bounded to one band at a time.
+        filtered_rest = signal.sosfilt(sos, rest, axis=0)
+        bands[name] = relative_events(filtered, filtered_rest)
+        bands[name].update(frequency_hz=[lo,hi], filter="Butterworth order 2 bandpass, causal SOS")
+    return bands
+
+
 def analyze(mix, stems=None, metadata=None, progress=lambda *_: None):
     stems = stems or {}
     meta = metadata or {}
@@ -282,12 +311,10 @@ def analyze(mix, stems=None, metadata=None, progress=lambda *_: None):
     transient_result = None
     if "drums" in stems:
         progress(91, "ドラムのトランジェントを解析中")
-        transient_result = transients(stems["drums"])
         rest = sum((v for k,v in stems.items() if k != "drums"), np.zeros_like(mix))
-        for event in transient_result["events"]:
-            t = event["time"]
-            lo, hi = int(t*SR), min(len(mix), int((t+.05)*SR))
-            event["relative_db"] = float(db_ratio(np.mean(stems["drums"][lo:hi]**2), np.mean(rest[lo:hi]**2)))
+        transient_result = relative_events(stems["drums"], rest)
+        progress(93, "ドラムの低域・中域・高域イベントを解析中")
+        transient_result["bands"] = band_transients(stems["drums"], rest, max_freq)
     warnings = ["帯域競合は聞き取れない確率ではありません。", "活動区間はエネルギーによる暫定検出です。歌唱区間の自動認識は未実装です。"]
     if not stems:
         warnings.append("ステム未指定：パート別の相対音量・競合・ドラム特性は対象外です。")
