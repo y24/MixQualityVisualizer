@@ -11,6 +11,7 @@ from pathlib import Path
 import numpy as np
 from scipy import signal, ndimage, fft
 from .rhythm import rhythm
+from .drum_types import describe_hits
 import soundfile as sf
 import pyloudnorm as pyln
 
@@ -327,6 +328,7 @@ def analyze(mix, stems=None, metadata=None, progress=lambda *_: None):
         progress(91, "ドラムのトランジェントを解析中")
         rest = sum((v for k,v in stems.items() if k != "drums"), np.zeros_like(mix))
         transient_result = relative_events(stems["drums"], rest)
+        describe_hits(stems["drums"], transient_result["events"], max_freq)
         progress(93, "ドラムの低域・中域・高域イベントを解析中")
         transient_result["bands"] = band_transients(stems["drums"], rest, max_freq)
         progress(95, "ドラムの拍候補を解析中")

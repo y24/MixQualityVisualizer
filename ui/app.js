@@ -53,9 +53,12 @@ function renderVocalEditor(r) {
   }
 }
 function transientData(track) { const band=$('transient-band').value;return band==='full'?track.transients:track.transients?.bands?.[band]; }
-$('transient-band').onchange=()=>{state.event=null;renderDashboard();};
+$('transient-band').onchange=()=>{if($('transient-band').value!=='full')$('transient-type').value='all';state.event=null;renderDashboard();};
+$('transient-type').onchange=()=>{state.event=null;renderDashboard();};
+const soundTypes={low_tonal:'低域・有音程型',broad_noise:'広帯域ノイズ型',high_noise:'高域ノイズ型',unknown:'複合・不明'};
+function transientEvents(track){const type=$('transient-type').value;return (transientData(track)?.events||[]).filter(e=>$('transient-band').value!=='full'||type==='all'||(e.sound_type||'unknown')===type);}
 function stat(track,key) {
-  if(key.startsWith('event:')) return median((transientData(track)?.events||[]).filter(e=>e.time>=range(track)[0]&&e.time<range(track)[1]).map(e=>e[key.slice(6)]));
+  if(key.startsWith('event:')) return median(transientEvents(track).filter(e=>e.time>=range(track)[0]&&e.time<range(track)[1]).map(e=>e[key.slice(6)]));
   return median(values(track,key));
 }
 function refsFor(track) { return state.references.filter(r=>r.max_frequency===track.max_frequency&&r.version===track.version); }
@@ -149,7 +152,7 @@ $('history-close').onclick=()=>$('history-dialog').close();
 $('export').onclick=async()=>{
   try {
     const strip=r=>{const {media,...data}=r;return data;};
-    await api.export({target:strip(state.target),references:state.references.map(strip),ranges:state.ranges,transient_band:$('transient-band').value,vocal_ranges:state.vocalRanges,vocal_modes:state.vocalModes,rhythm_settings:state.rhythmSettings,exported_at:new Date().toISOString()});
+    await api.export({target:strip(state.target),references:state.references.map(strip),ranges:state.ranges,transient_band:$('transient-band').value,transient_type:$('transient-type').value,vocal_ranges:state.vocalRanges,vocal_modes:state.vocalModes,rhythm_settings:state.rhythmSettings,exported_at:new Date().toISOString()});
   }catch(e){notice(e.message);}
 };
 document.querySelectorAll('#tabs button').forEach(b=>b.onclick=()=>{state.tab=b.dataset.tab;state.event=null;renderDashboard();});
@@ -219,7 +222,7 @@ function renderDashboard() {
   const lines=[...r.warnings];
   if(state.references.some(x=>x.max_frequency!==r.max_frequency))lines.push('周波数上限の違うリファレンスは数値比較から除外しています。');
   if(state.tab==='spatial')lines.push('M/Sは中央と左右の楽器を完全に分離する処理ではありません。Midとモノラルの試聴はこのゲイン規約では同じ音です。Side比率とモノラル合成差は独立の指標ではありません。');
-  if(state.tab==='drums')lines.push('打音検出は包絡変化による試作版です。選択帯域は打音カード・散布図・測定状況・リファレンス比較に適用し、ドラムの相対音量と帯域競合は全帯域のままです。帯域別はフィルター後に独立検出します。帯域名は楽器名ではなく、同じ一打が複数帯域で検出される場合があります。フィルターの遅延・リンギング、特に低域の周期が測定に含まれるため、帯域間の時間差は楽器のタイミング差を意味しません。連打で150 msの窓に次の打音が入る場合、アタック／ボディ比とクレストは対象外です。減衰を測れたイベントだけの中央値には偏りがあります。');
+  if(state.tab==='drums')lines.push('打音検出は包絡変化による試作版です。全帯域のタイプはオンセット後80 msの帯域比・スペクトル平坦度・重心によるルール推定であり、楽器の確定分類ではありません。重なった音や加工音は誤分類する場合があります。選択帯域は打音カード・散布図・測定状況・リファレンス比較に適用し、ドラムの相対音量と帯域競合は全帯域のままです。帯域別はフィルター後に独立検出します。帯域名は楽器名ではなく、同じ一打が複数帯域で検出される場合があります。フィルターの遅延・リンギング、特に低域の周期が測定に含まれるため、帯域間の時間差は楽器のタイミング差を意味しません。連打で150 msの窓に次の打音が入る場合、アタック／ボディ比とクレストは対象外です。減衰を測れたイベントだけの中央値には偏りがあります。');
   if(state.tab==='density')lines.push('占有度は各曲全体を−23 LUFS相当に換算した固定閾値の試作指標です。単一の広帯域音でも高くなります。「その他」内部の楽器同士の競合は測れません。');
   for(const line of lines)$('notes').append(text('p',line));
   $('method').replaceChildren(text('p',`解析バージョン ${r.version} · 共通解析レート44.1 kHz · Hann 4096点 / 50 ms間隔 / ERB 32帯域 · 比率は選択区間内のフレーム中央値。リファレンスは各曲の中央値を等重みで集約。区間端では窓が選択範囲の外を含む場合があります。`),text('p','楽器別の比率はK特性400 ms / 3秒。低域・M/Sは重み付けなし。活動判定は95パーセンタイルから−35 dB、最低−100 dBFSパワー。帯域競合は対象の有効帯域で他パートが上回る割合。聴感検証前の指標です。'));
@@ -306,8 +309,9 @@ function renderDetail(r,kind){
   }else if(kind==='vocals'){
     root.append(row('活動区間（暫定検出）',number(r.parts.vocals?.activity_pct)+'%'),row('相対音量の下位10%',percentile(values(r,'vocals_db'),.1)+' dB'),row('相対音量の上位10%',percentile(values(r,'vocals_db'),.9)+' dB'),text('p','声が小さい時間と、帯域競合が強い時間を見比べてください。コーラスを含む全歌声が対象です。','subtle'));
   }else if(kind==='drums'){
-    const ev=(transientData(r)?.events||[]).filter(e=>e.time>=range(r)[0]&&e.time<range(r)[1]);
+    const ev=transientEvents(r).filter(e=>e.time>=range(r)[0]&&e.time<range(r)[1]);
     root.append(row('検出したイベント',String(ev.length)),row('アタック／ボディ測定可能',`${ev.filter(e=>valid(e.attack_body_db)).length} / ${ev.length}`),row('減衰時間を測定可能',`${ev.filter(e=>valid(e.decay_ms)).length} / ${ev.length}`),row('クレストファクター',number(median(ev.map(e=>e.crest_db)))+' dB'),row('イベント頻度',number(ev.length/(range(r)[1]-range(r)[0]))+' / 秒'));
+    for(const [key,label,unit] of [['attack_ms','立ち上がり','ms'],['attack_body_db','A/B','dB'],['crest_db','クレスト','dB'],['decay_ms','減衰','ms']])root.append(row(`${label} 10–90%範囲`,`${percentile(ev.map(e=>e[key]),.1)} – ${percentile(ev.map(e=>e[key]),.9)} ${unit}`));
   }else if(kind==='spatial'){
     root.append(row('左 / 右のレベル差',number(stat(r,'lr_db'))+' dB'),row('Sideなしのフレーム',String(values(r,'side_pct').filter(v=>valid(v)&&v<.001).length)),row('完全モノキャンセルのフレーム',String(values(r,'side_pct').filter(v=>valid(v)&&v>99.999).length)),text('p','左だけの音と、左右同パワーの無相関音はどちらもSide約50%になり得ます。Side比率だけで幅を断定しません。','subtle'));
     root.append(text('p','曲全体のM/Sスペクトル · 青緑 Mid / 紫 Side','subtle'));
@@ -322,21 +326,29 @@ function drawSpectrum(r){
   grid(s,-100,-10,'');ctx.clearRect(0,h-20,w,20);ctx.fillStyle='#8996a5';ctx.textAlign='left';ctx.fillText('20 Hz',48,h-4);ctx.textAlign='right';ctx.fillText('20 kHz / ERB帯域',w-12,h-4);
   for(const [values,color] of [[r.mid_spectrum,'#6bcac2'],[r.side_spectrum,'#b29be3']]){ctx.strokeStyle=color;ctx.lineWidth=1.5;ctx.beginPath();values.forEach((v,i)=>{const x=48+(w-60)*i/(values.length-1),y=15+(h-45)*(-10-Math.max(-100,Math.min(-10,v)))/90;if(i)ctx.lineTo(x,y);else ctx.moveTo(x,y);});ctx.stroke();}
 }
-function percentile(a,p){a=a.filter(valid).sort((x,y)=>x-y);return a.length?number(a[Math.floor((a.length-1)*p)]):'—';}
+function percentile(a,p){a=a.filter(valid).sort((x,y)=>x-y);if(!a.length)return '—';const n=(a.length-1)*p,lo=Math.floor(n),hi=Math.ceil(n);return number(a[lo]+(a[hi]-a[lo])*(n-lo));}
 let plottedEvents=[];
 function drawTransients(r){
-  const events=(transientData(r)?.events||[]).filter(e=>e.time>=range(r)[0]&&e.time<range(r)[1]);
+  $('transient-type').disabled=$('transient-band').value!=='full';
+  const events=transientEvents(r).filter(e=>e.time>=range(r)[0]&&e.time<range(r)[1]);
   $('event-count').textContent=`${events.length} EVENTS`;
   const s=surface('scatter'),{ctx,w,h}=s;grid(s,-20,30,'');
   ctx.fillStyle='#8996a5';ctx.clearRect(0,h-18,w,18);ctx.textAlign='left';ctx.fillText('−30 dB',48,h-4);ctx.textAlign='right';ctx.fillText('+30 dB',w-12,h-4);
   plottedEvents=[];
+  let referenceCount=0;
+  for(const track of refsFor(r))for(const e of transientEvents(track).filter(e=>e.time>=range(track)[0]&&e.time<range(track)[1])){
+    if(!valid(e.relative_db)||!valid(e.attack_body_db))continue;
+    const x=48+(w-60)*(Math.max(-30,Math.min(30,e.relative_db))+30)/60,y=15+(h-45)*(30-Math.max(-20,Math.min(30,e.attack_body_db)))/50;
+    ctx.strokeStyle='#b29be388';ctx.beginPath();ctx.arc(x,y,3,0,Math.PI*2);ctx.stroke();referenceCount++;
+  }
+  $('event-count').textContent+=` / REF ${referenceCount}`;
   for(const e of events){if(!valid(e.relative_db)||!valid(e.attack_body_db))continue;const x=48+(w-60)*(Math.max(-30,Math.min(30,e.relative_db))+30)/60,y=15+(h-45)*(30-Math.max(-20,Math.min(30,e.attack_body_db)))/50;ctx.fillStyle=state.event===e?'#f1ba73':'#6bcac299';ctx.beginPath();ctx.arc(x,y,state.event===e?5:3,0,Math.PI*2);ctx.fill();plottedEvents.push({x,y,e});}
   if(!events.includes(state.event))state.event=events.find(e=>valid(e.attack_body_db))||events[0]||null;
   s.c.onclick=event=>{let best=null,d=Infinity;for(const p of plottedEvents){const n=Math.hypot(p.x-event.offsetX,p.y-event.offsetY);if(n<d){best=p;d=n;}}if(best&&d<25){state.event=best.e;seek(best.e.time);drawTransients(r);}};
   const env=surface('envelope'),e=state.event;
   if(!e){blank(env,'測定できる打音がありません');$('event-detail').textContent=transientData(r)?'この区間にはイベントがありません。':'この帯域のデータがありません。音源の周波数上限を確認してください。';return;}
   const maximum=Math.max(...e.envelope,1e-12);env.ctx.strokeStyle='#f1ba73';env.ctx.lineWidth=1.6;env.ctx.beginPath();e.envelope.forEach((v,i)=>{const x=15+i/Math.max(1,e.envelope.length-1)*(env.w-30),y=15+(env.h-40)*(1-v/maximum);if(i)env.ctx.lineTo(x,y);else env.ctx.moveTo(x,y);});env.ctx.stroke();env.ctx.fillStyle='#8996a5';env.ctx.fillText('ピーク正規化した包絡 / 約240 ms',15,env.h-5);
-  $('event-detail').textContent=`${e.time.toFixed(3)} 秒 · 立ち上がり ${number(e.attack_ms)} ms · A/B ${number(e.attack_body_db)} dB · 減衰 ${number(e.decay_ms)} ms`;
+  $('event-detail').textContent=`${e.time.toFixed(3)} 秒 · ${$('transient-band').value==='full'?soundTypes[e.sound_type||'unknown']:'帯域内イベント'} · 立ち上がり ${number(e.attack_ms)} ms · A/B ${number(e.attack_body_db)} dB · 減衰 ${number(e.decay_ms)} ms`;
 }
 function refreshPlayer(){
   const selected=$('listen-track').value,tracks=[state.target,...state.references].filter(Boolean);$('listen-track').replaceChildren();

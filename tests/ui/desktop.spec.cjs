@@ -58,6 +58,15 @@ test('desktop imports synthetic stems, analyzes, plays and compares cached refer
   await page.getByRole('button',{name:'ドラム',exact:true}).click();
   const delta=await page.locator('#cards .card-delta').first().innerText();
   expect(parseFloat(delta)).toBeGreaterThan(2);
+  await expect(page.locator('#event-count')).toContainText('REF');
+  await page.locator('#transient-type').selectOption('low_tonal');
+  expect(await page.evaluate(()=>transientEvents(state.target).every(e=>e.sound_type==='low_tonal'))).toBe(true);
+  await expect(page.locator('#detail')).toContainText('10–90%範囲');
+  await page.screenshot({path:'test-results/desktop-drum-types.png',fullPage:true});
+  await page.locator('#transient-band').selectOption('low');
+  await expect(page.locator('#transient-type')).toBeDisabled();
+  await expect(page.locator('#transient-type')).toHaveValue('all');
+  await page.locator('#transient-band').selectOption('full');
   expect(errors).toEqual([]);
 });
 test('canceling analysis preserves the current result and allows a new job',async()=>{
