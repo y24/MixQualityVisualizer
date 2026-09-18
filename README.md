@@ -24,19 +24,23 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\setup.ps1
 
 `setup.ps1`は、このフォルダー内の`.venv`へPython依存関係を、`node_modules`へElectronをインストールします。Pythonは`requirements-lock.txt`、Nodeは`package-lock.json`に固定したバージョンを使用します。PythonやNodeのグローバル環境は変更しません。
 
-ソース版は開発用の起動形式です。Node.js不要のWindows配布フォルダーも生成できます（Python 3.13は別途必要）。Python同梱・単体EXE・インストーラー形式にはまだ対応していません。
+ソース版の開発にはPythonとNode.jsを使います。配布版にはPythonと解析ライブラリを同梱するため、利用者側のPython・uv・Node.jsは不要です。
 
-## Windows配布フォルダー
+## Python同梱 Windows版
 
 ```powershell
 npm.cmd run build:windows
 ```
 
-`dist/MixAtlas-<解析バージョン>-<日時>/`に`MixAtlas.exe`とElectron本体、アプリ、`Setup.cmd`／`Setup-CUDA.cmd`を生成します。配布先はPython 3.13 x64を用意し、書き込み可能な場所へフォルダー全体を配置して、最初にSetupを実行します。その後はMixAtlas.exeを直接起動できます。配布先でNode.js／npmは不要です。セットアップには依存関係を取得するネット接続が必要です。
+`dist/MixAtlas-<解析バージョン>-<日時>/`に、`MixAtlas.exe`、Electron、CPython 3.13.3の埋め込み用ランタイム、固定バージョンの解析ライブラリを生成します。配布先では書き込み可能な場所へ**フォルダー全体**を配置してMixAtlas.exeを起動するだけです。Setupやuv、システムのPythonは使いません。
 
-作業環境の音源・解析履歴・分離ステム・モデル・仮想環境は配布物に含めません。Electronのライセンスを同梱します。Pythonライブラリのライセンスはセットアップ時に各パッケージとともに導入されます。Python同梱版やインストーラーではなく、EXEだけを取り出しての配布はできません。生成したEXEと既存Python環境を組み合わせた動作を確認していますが、別のクリーンPCでの初回セットアップは未検証です。
+ビルド時に公式PythonのZIP（約11 MB）を取得し、固定SHA-256を照合します。ライブラリは開発環境の`requirements-lock.txt`に一致する配布メタデータから収集し、ライセンスも含めて同梱します。現在の環境からのビルドはCUDA 12.8対応PyTorchを含み、CPU/GPUを選択できます。CUDAライブラリを含むため、展開後は数GBの容量が必要です。GPU利用には対応するNVIDIAドライバーが必要です。
 
-配布方式は[Electronの手動パッケージ手順](https://www.electronjs.org/docs/latest/tutorial/application-distribution)を使用しています。
+音源分離モデルは初回の分離時にダウンロードします。作業環境のユーザー音源・解析履歴・分離ステム・モデルは配布しません。自作の合成デモのみを同梱します。`resources/python/runtime-manifest.json`に同梱パッケージを記録します。配布版は相対パスの隔離されたPython検索パスを使い、システムPythonへ依存しません。
+
+外部Pythonの指定を外し、PATHをWindowsシステムディレクトリだけにした環境で、EXE起動・DSP解析・CPU/CUDA実分離を検証しています。別のクリーンPCでのドライバーやWindows環境差の検証は別途必要です。単体EXEやインストーラー形式ではないため、resourcesやDLLを含むフォルダー全体を保持してください。
+
+配布方式の資料：[Electronの手動パッケージ手順](https://www.electronjs.org/docs/latest/tutorial/application-distribution)、[Pythonの埋め込み用配布](https://docs.python.org/3.13/using/windows.html#the-embeddable-package)。
 
 ## 使い方
 
