@@ -10,6 +10,7 @@ import json
 from pathlib import Path
 import numpy as np
 from scipy import signal, ndimage, fft
+from .rhythm import rhythm
 import soundfile as sf
 import pyloudnorm as pyln
 
@@ -328,6 +329,8 @@ def analyze(mix, stems=None, metadata=None, progress=lambda *_: None):
         transient_result = relative_events(stems["drums"], rest)
         progress(93, "ドラムの低域・中域・高域イベントを解析中")
         transient_result["bands"] = band_transients(stems["drums"], rest, max_freq)
+        progress(95, "ドラムの拍候補を解析中")
+        transient_result["rhythm"] = rhythm(stems["drums"], rest)
     warnings = ["帯域競合は聞き取れない確率ではありません。", "活動区間はエネルギーによる暫定検出です。歌唱区間の自動認識は未実装です。"]
     if not stems:
         warnings.append("ステム未指定：パート別の相対音量・競合・ドラム特性は対象外です。")

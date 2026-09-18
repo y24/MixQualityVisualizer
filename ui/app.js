@@ -1,7 +1,7 @@
 'use strict';
 const $ = id => document.getElementById(id);
 const api = window.mixApp;
-const state = { target:null, references:[], tab:'overview', ranges:{}, busy:false, role:'target', pending:null, stems:{}, event:null, hardware:null, vocalRanges:{}, vocalModes:{} };
+const state = { target:null, references:[], tab:'overview', ranges:{}, busy:false, role:'target', pending:null, stems:{}, event:null, hardware:null, vocalRanges:{}, vocalModes:{}, rhythmSettings:{} };
 const names = {vocals:'ボーカル',drums:'ドラム',bass:'ベース',other:'その他'};
 const sourceNames = {mix:'元ステレオ',mid:'Midのみ',side:'Sideのみ',mono:'モノラル',...names};
 const number = (v,d=1) => typeof v==='number' && Number.isFinite(v) ? v.toFixed(d) : '—';
@@ -64,6 +64,9 @@ function setBusy(busy) { state.busy=busy;$('progress-panel').hidden=!busy;for(co
 api?.onProgress(msg=>{ $('progress').value=msg.percent;$('progress-message').textContent=msg.message; });
 
 function addResult(result,role) {
+  if(!(result.id in state.rhythmSettings)){
+    try{const saved=JSON.parse(localStorage.getItem('rhythm:'+result.id));if(saved)Rhythm.beats(result.transients?.rhythm,result.duration,saved);state.rhythmSettings[result.id]=saved;}catch{state.rhythmSettings[result.id]=null;}
+  }
   state.vocalModes[result.id]=localStorage.getItem('vocal-mode:'+result.id)==='manual'?'manual':'filter';
   if(!(result.id in state.vocalRanges)){
     try { const saved=JSON.parse(localStorage.getItem('vocal-ranges:'+result.id));state.vocalRanges[result.id]=saved==null?null:VocalRanges.normalize(saved,result.duration); }
@@ -146,7 +149,7 @@ $('history-close').onclick=()=>$('history-dialog').close();
 $('export').onclick=async()=>{
   try {
     const strip=r=>{const {media,...data}=r;return data;};
-    await api.export({target:strip(state.target),references:state.references.map(strip),ranges:state.ranges,transient_band:$('transient-band').value,vocal_ranges:state.vocalRanges,vocal_modes:state.vocalModes,exported_at:new Date().toISOString()});
+    await api.export({target:strip(state.target),references:state.references.map(strip),ranges:state.ranges,transient_band:$('transient-band').value,vocal_ranges:state.vocalRanges,vocal_modes:state.vocalModes,rhythm_settings:state.rhythmSettings,exported_at:new Date().toISOString()});
   }catch(e){notice(e.message);}
 };
 document.querySelectorAll('#tabs button').forEach(b=>b.onclick=()=>{state.tab=b.dataset.tab;state.event=null;renderDashboard();});
@@ -209,6 +212,7 @@ function renderDashboard() {
   if(heat==='band_correlation'){$('heatmap-title').textContent='帯域別の左右相関';$('heatmap-description').textContent='同一STFT窓の帯域パワー・交差パワーから算出';}
   drawHeatmap(r,heat);
   renderDetail(r,v.detail);
+  renderRhythm(r);
   $('transient-panel').hidden=state.tab!=='drums'||!r.transients;
   if(!$('transient-panel').hidden)drawTransients(r);
   $('notes').replaceChildren();
@@ -221,6 +225,32 @@ function renderDashboard() {
   $('method').replaceChildren(text('p',`解析バージョン ${r.version} · 共通解析レート44.1 kHz · Hann 4096点 / 50 ms間隔 / ERB 32帯域 · 比率は選択区間内のフレーム中央値。リファレンスは各曲の中央値を等重みで集約。区間端では窓が選択範囲の外を含む場合があります。`),text('p','楽器別の比率はK特性400 ms / 3秒。低域・M/Sは重み付けなし。活動判定は95パーセンタイルから−35 dB、最低−100 dBFSパワー。帯域競合は対象の有効帯域で他パートが上回る割合。聴感検証前の指標です。'));
 }
 
+function rhythmBeats(r){return Rhythm.beats(r.transients?.rhythm,r.duration,state.rhythmSettings[r.id]).filter(b=>b.time>=range(r)[0]&&b.time<range(r)[1]);}
+function saveRhythm(settings){
+  const r=state.target;if(!r)return;
+  try{Rhythm.beats(r.transients?.rhythm,r.duration,settings);localStorage.setItem('rhythm:'+r.id,JSON.stringify(settings));state.rhythmSettings[r.id]=settings;notice();renderDashboard();}catch(e){notice(e.message);}
+}
+$('rhythm-apply').onclick=()=>{
+  if(!$('rhythm-bpm').value||!$('rhythm-offset').value){notice('BPMと最初の拍を入力してください。');return;}
+  saveRhythm({bpm:Number($('rhythm-bpm').value),offset:Number($('rhythm-offset').value)});
+};
+$('rhythm-auto').onclick=()=>saveRhythm(null);
+$('rhythm-metric').onchange=()=>{if(state.target)renderRhythm(state.target);};
+function renderRhythm(r){
+  const data=r.transients?.rhythm;$('rhythm-panel').hidden=state.tab!=='drums'||!data;
+  if($('rhythm-panel').hidden)return;
+  const setting=state.rhythmSettings[r.id],key=$('rhythm-metric').value;
+  $('rhythm-bpm').value=setting?.bpm??data.bpm??'';$('rhythm-offset').value=setting?.offset??data.offset??0;
+  const candidates=data.candidates.map(c=>`${number(c.bpm)} BPM`).join(' / ');
+  $('rhythm-status').textContent=`${setting?'手動指定':data.bpm?'自動推定':'自動推定は不確かです。BPMと開始位置を指定してください。'} · 周期性 ${number(data.periodicity,2)}（正解確率ではありません）${candidates?' · 候補 '+candidates:''}`;
+  const beats=rhythmBeats(r),value=median(beats.map(b=>b[key]));
+  const reference=median(refsFor(r).map(t=>median(rhythmBeats(t).map(b=>b[key]))));
+  $('rhythm-summary').textContent=`${beats.length} 拍候補 / 測定可能 ${beats.filter(b=>valid(b[key])).length} · 中央値 ${number(value)} dB · REF ${number(reference)} dB · 差 ${valid(value)&&valid(reference)?number(value-reference):'—'} dB`;
+  const s=surface('rhythm-chart');grid(s,-24,24,'');const {ctx,w,h}=s;
+  for(const beat of beats){const v=beat[key];if(!valid(v))continue;const x=48+(w-60)*(beat.time-range(r)[0])/(range(r)[1]-range(r)[0]);const y=15+(h-45)*(24-Math.max(-24,Math.min(24,v)))/48;ctx.strokeStyle='#6bcac2';ctx.beginPath();ctx.moveTo(x,15+(h-45)/2);ctx.lineTo(x,y);ctx.stroke();}
+  if(!beats.length)blank(s,'拍候補がありません');
+  s.c.onclick=e=>seek(range(r)[0]+Math.max(0,Math.min(1,(e.offsetX-48)/(w-60)))*(range(r)[1]-range(r)[0]));
+}
 function surface(id){const c=$(id),dpr=window.devicePixelRatio||1,w=Math.max(200,c.clientWidth),h=c.clientHeight;c.width=Math.round(w*dpr);c.height=Math.round(h*dpr);const ctx=c.getContext('2d');ctx.scale(dpr,dpr);ctx.font='10px "Segoe UI",sans-serif';return{c,ctx,w,h};}
 function blank(s,message){s.ctx.fillStyle='#8996a5';s.ctx.textAlign='center';s.ctx.fillText(message,s.w/2,s.h/2);}
 function grid(s,min,max,unit=''){const{ctx,w,h}=s;ctx.strokeStyle='#2a333d';ctx.fillStyle='#82909f';ctx.textAlign='right';for(let i=0;i<5;i++){const y=15+(h-45)*i/4;ctx.beginPath();ctx.moveTo(48,y);ctx.lineTo(w-12,y);ctx.stroke();ctx.fillText(number(max-(max-min)*i/4,unit==='%'?0:1)+unit,41,y+3);}ctx.textAlign='left';ctx.fillText('0%',48,h-6);ctx.textAlign='right';ctx.fillText('100%',w-12,h-6);}

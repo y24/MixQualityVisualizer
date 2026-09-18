@@ -173,3 +173,25 @@ test('explicit CUDA choice runs a real separation from the UI',async()=>{
   await expect(page.locator('#track-meta')).toContainText(`${deviceName}で分離`);
   await expect(page.locator('#progress-panel')).toBeHidden();
 });
+
+test('beat grid supports manual tempo, reference summary and persistence',async()=>{
+  await page.locator('#demo').click();
+  await expect(page.locator('#progress-panel')).toBeHidden({timeout:90000});
+  await page.getByRole('button',{name:'ドラム',exact:true}).click();
+  await expect(page.locator('#rhythm-panel')).toBeVisible();
+  await page.locator('#rhythm-bpm').fill('120');await page.locator('#rhythm-offset').fill('0.2');
+  await page.locator('#rhythm-apply').click();
+  await expect(page.locator('#rhythm-status')).toContainText('手動指定');
+  await expect(page.locator('#rhythm-summary')).toContainText('48 拍候補');
+  await page.locator('#rhythm-metric').selectOption('accent_db');
+  await page.screenshot({path:'test-results/desktop-rhythm.png',fullPage:true});
+  await page.reload();await page.locator('#demo').click();
+  await expect(page.locator('#progress-panel')).toBeHidden({timeout:90000});
+  await page.getByRole('button',{name:'ドラム',exact:true}).click();
+  await expect(page.locator('#rhythm-bpm')).toHaveValue('120');
+  await expect(page.locator('#rhythm-offset')).toHaveValue('0.2');
+  await page.locator('#rhythm-bpm').fill('0');await page.locator('#rhythm-apply').click();
+  await expect(page.locator('#notice')).toContainText('BPMは30');
+  await page.locator('#rhythm-auto').click();
+  await expect(page.locator('#rhythm-status')).not.toContainText('手動指定');
+});
