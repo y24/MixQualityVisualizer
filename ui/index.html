@@ -34,8 +34,8 @@
     <section id="dashboard" hidden>
       <div class="range-bar"><div><span class="eyebrow">比較する区間</span><span class="subtle">曲ごとに近い編成の区間を選択</span></div><div><label>開始 <input id="range-start" type="number" min="0" step="0.1" value="0"> 秒</label><span>—</span><label>終了 <input id="range-end" type="number" min="0" step="0.1"> 秒</label><button id="range-apply" class="secondary small">適用</button><button id="range-reset" class="text-button">全体</button></div></div>
       <div id="vocal-editor" class="panel" hidden>
-        <h2>ボーカルの集計対象区間</h2><p class="subtle">自動検出した活動区間を、指定した歌唱区間に絞ります。再解析は不要です。無音・自動検出対象外の数値は復元しません。</p>
-        <div class="range-bar"><label>開始秒 <input id="vocal-start" type="number" min="0" step="0.05" value="0"></label><label>終了秒 <input id="vocal-end" type="number" min="0" step="0.05"></label><button id="vocal-add" class="secondary small">区間を追加</button><button id="vocal-auto" class="text-button">自動検出に戻す</button></div>
+        <h2>ボーカルの集計対象区間</h2><p class="subtle">指定区間内で、自動検出を維持するか、弱い歌声も含めて集計するかを選べます。無音・測定下限以下は対象外です。</p>
+        <label>集計方法<select id="vocal-mode"><option value="filter">自動検出を指定区間に絞る</option><option value="manual">指定区間を優先（弱い歌声も含める）</option></select></label><div class="range-bar"><label>開始秒 <input id="vocal-start" type="number" min="0" step="0.05" value="0"></label><label>終了秒 <input id="vocal-end" type="number" min="0" step="0.05"></label><button id="vocal-add" class="secondary small">区間を追加</button><button id="vocal-auto" class="text-button">自動検出に戻す</button></div>
         <p id="vocal-status" class="subtle"></p><div id="vocal-ranges"></div><p id="vocal-error" role="status"></p>
       </div>
       <div id="cards" class="cards"></div>

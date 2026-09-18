@@ -131,6 +131,8 @@ test('manual vocal ranges mask values, validate input, persist and reset',async(
   await page.locator('#vocal-add').click();
   await expect(page.locator('#vocal-status')).toContainText('手動指定 1');
   await expect(page.locator('#cards')).toContainText('手動指定区間');
+  await page.locator('#vocal-mode').selectOption('manual');
+  expect(await page.evaluate(()=>stat(state.target,'vocals_db'))).toBe(await page.evaluate(()=>median(state.target.vocal_ungated.series.vocals_db.filter((v,i)=>state.target.times[i]>=4&&state.target.times[i]<8))));
   const exportFile=path.resolve(__dirname,`../../test-results/vocal-ranges-${Date.now()}.json`);
   await app.evaluate(({dialog},file)=>{dialog.showSaveDialog=async()=>({canceled:false,filePath:file});},exportFile);
   await page.locator('#export').click();
@@ -138,6 +140,7 @@ test('manual vocal ranges mask values, validate input, persist and reset',async(
   await expect.poll(()=>fs.existsSync(exportFile)).toBe(true);
   const exported=JSON.parse(fs.readFileSync(exportFile,'utf8'));
   expect(exported.vocal_ranges[exported.target.id]).toEqual([[4,8]]);
+  expect(exported.vocal_modes[exported.target.id]).toBe('manual');
   expect(await page.evaluate(()=>values(state.target,'vocals_db').filter(valid).length)).toBeGreaterThan(0);
   expect(await page.evaluate(()=>vocalValue(state.target,'vocals_db',0,5))).toBeNull();
   expect(await page.evaluate(()=>vocalValue(state.target,'drums_db',0,5))).toBe(5);
@@ -148,6 +151,7 @@ test('manual vocal ranges mask values, validate input, persist and reset',async(
   await expect(page.locator('#progress-panel')).toBeHidden({timeout:90000});
   await page.getByRole('button',{name:'ボーカル',exact:true}).click();
   await expect(page.locator('#vocal-ranges')).toContainText('4.00 – 8.00');
+  await expect(page.locator('#vocal-mode')).toHaveValue('manual');
   await page.screenshot({path:'test-results/desktop-vocal-ranges.png',fullPage:true});
   await page.locator('#vocal-ranges button').click();
   await expect(page.locator('#vocal-status')).toContainText('対象区間なし');

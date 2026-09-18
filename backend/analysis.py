@@ -275,6 +275,7 @@ def analyze(mix, stems=None, metadata=None, progress=lambda *_: None):
         out=np.full(band_denom.shape,np.nan),where=(lr[:, :32,0]>FLOOR)&(lr[:, :32,1]>FLOOR)),-1,1)
     series["low_normalized_db"][full<FLOOR] = np.nan
     part_results = {}
+    vocal_ungated = {"series": {}, "heatmaps": {}}
     stem_bands = []
     for n, (name, x) in enumerate(stems.items()):
         progress(65+n*6, f"{name} の相対音量・帯域競合を解析中")
@@ -282,8 +283,12 @@ def analyze(mix, stems=None, metadata=None, progress=lambda *_: None):
         p, p_long = window_powers(x, times, k_weight=True)
         r, r_long = window_powers(rest, times, k_weight=True)
         active = activity(p)
-        ratios = db_ratio(p, r); ratios[~active] = np.nan
-        long = db_ratio(p_long, r_long); long[~active] = np.nan
+        ratios = db_ratio(p, r)
+        long = db_ratio(p_long, r_long)
+        if name == "vocals":
+            vocal_ungated["series"].update(vocals_db=ratios.copy(), vocals_short_db=long.copy())
+        ratios[~active] = np.nan
+        long[~active] = np.nan
         series[name+"_db"] = ratios
         series[name+"_short_db"] = long
         _, xb = band_power(x, max_freq)
@@ -291,12 +296,20 @@ def analyze(mix, stems=None, metadata=None, progress=lambda *_: None):
         xb, rb = xb.sum(axis=2), rb.sum(axis=2)
         stem_bands.append(xb[:, :32])
         c = competition(xb[:, :32], rb[:, :32], active)
+        if name == "vocals":
+            raw = competition(xb[:, :32], rb[:, :32], np.ones(len(times), dtype=bool))
+            vocal_ungated["series"]["vocals_competition"] = raw["rate"]
+            vocal_ungated["heatmaps"]["vocals_competition"] = raw["ratio"]
         series[name+"_competition"] = c["rate"]
         heatmaps[name+"_competition"] = c["ratio"]
         _, xm = band_power(components(x), max_freq)
         _, rm = band_power(components(rest), max_freq)
         for channel, label in enumerate(("mid", "side")):
             comp = competition(xm[:, :32, channel], rm[:, :32, channel], active)
+            if name == "vocals":
+                raw = competition(xm[:, :32, channel], rm[:, :32, channel], np.ones(len(times), dtype=bool))
+                vocal_ungated["series"]["vocals_"+label+"_competition"] = raw["rate"]
+                vocal_ungated["heatmaps"]["vocals_"+label+"_competition"] = raw["ratio"]
             series[name+"_"+label+"_competition"] = comp["rate"]
             heatmaps[name+"_"+label+"_competition"] = comp["ratio"]
         part_results[name] = {"activity_pct": float(active.mean()*100),
@@ -336,5 +349,5 @@ def analyze(mix, stems=None, metadata=None, progress=lambda *_: None):
                   "broad_pct": fraction(broad.mean(axis=0), full.mean()),
                   "mid_spectrum": 10*np.log10(np.maximum(mid[:, :32].mean(axis=0), FLOOR)),
                   "side_spectrum": 10*np.log10(np.maximum(side[:, :32].mean(axis=0), FLOOR)),
-                  "parts": part_results, "transients": transient_result,
+                  "parts": part_results, "transients": transient_result, "vocal_ungated": vocal_ungated,
                   "residual_db": residual_db, "warnings": warnings})

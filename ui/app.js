@@ -1,7 +1,7 @@
 'use strict';
 const $ = id => document.getElementById(id);
 const api = window.mixApp;
-const state = { target:null, references:[], tab:'overview', ranges:{}, busy:false, role:'target', pending:null, stems:{}, event:null, hardware:null, vocalRanges:{} };
+const state = { target:null, references:[], tab:'overview', ranges:{}, busy:false, role:'target', pending:null, stems:{}, event:null, hardware:null, vocalRanges:{}, vocalModes:{} };
 const names = {vocals:'ボーカル',drums:'ドラム',bass:'ベース',other:'その他'};
 const sourceNames = {mix:'元ステレオ',mid:'Midのみ',side:'Sideのみ',mono:'モノラル',...names};
 const number = (v,d=1) => typeof v==='number' && Number.isFinite(v) ? v.toFixed(d) : '—';
@@ -13,7 +13,18 @@ function notice(message='') { $('notice').textContent=message;$('notice').hidden
 function range(track) { return state.ranges[track.id] || [0,track.duration]; }
 function indices(track) { const [start,end]=range(track);return track.times.map((t,i)=>t>=start&&t<end ? i:-1).filter(i=>i>=0); }
 function values(track,key) { const a=track.series[key]||[];return indices(track).map(i=>vocalValue(track,key,i,a[i])); }
-function vocalValue(track,key,i,value) { return key.startsWith('vocals_')&&!VocalRanges.includes(state.vocalRanges[track.id],track.times[i])?null:value; }
+function vocalValue(track,key,i,value,band=null) {
+  if(!key.startsWith('vocals_')||state.vocalRanges[track.id]==null)return value;
+  if(!VocalRanges.includes(state.vocalRanges[track.id],track.times[i]))return null;
+  if(state.vocalModes[track.id]==='manual'&&track.vocal_ungated){
+    return band==null?track.vocal_ungated.series[key]?.[i]:track.vocal_ungated.heatmaps[key]?.[i]?.[band];
+  }
+  return value;
+}
+$('vocal-mode').onchange=()=>{
+  if(!state.target)return;
+  try {localStorage.setItem('vocal-mode:'+state.target.id,$('vocal-mode').value);state.vocalModes[state.target.id]=$('vocal-mode').value;renderDashboard();}catch(e){notice(e.message);}
+};
 function saveVocalRanges(ranges) {
   localStorage.setItem('vocal-ranges:'+state.target.id,JSON.stringify(ranges));
   state.vocalRanges[state.target.id]=ranges;
@@ -31,6 +42,9 @@ $('vocal-auto').onclick=()=>{if(state.target){$('vocal-error').textContent='';sa
 function renderVocalEditor(r) {
   $('vocal-editor').hidden=state.tab!=='vocals'||!r.parts.vocals;
   const ranges=state.vocalRanges[r.id];
+  $('vocal-mode').value=state.vocalModes[r.id]||'filter';
+  $('vocal-mode').querySelector('[value=manual]').disabled=!r.vocal_ungated;
+  $('vocal-mode').title=r.vocal_ungated?'':'手動復元を使用するには再解析してください。';
   $('vocal-status').textContent=ranges==null?'自動検出を使用中':ranges.length?`手動指定 ${ranges.length} 区間（比較区間との共通部分を集計）`:'手動指定：対象区間なし';
   $('vocal-ranges').replaceChildren();
   for(const [i,pair] of (ranges||[]).entries()){
@@ -50,6 +64,7 @@ function setBusy(busy) { state.busy=busy;$('progress-panel').hidden=!busy;for(co
 api?.onProgress(msg=>{ $('progress').value=msg.percent;$('progress-message').textContent=msg.message; });
 
 function addResult(result,role) {
+  state.vocalModes[result.id]=localStorage.getItem('vocal-mode:'+result.id)==='manual'?'manual':'filter';
   if(!(result.id in state.vocalRanges)){
     try { const saved=JSON.parse(localStorage.getItem('vocal-ranges:'+result.id));state.vocalRanges[result.id]=saved==null?null:VocalRanges.normalize(saved,result.duration); }
     catch { state.vocalRanges[result.id]=null; }
@@ -131,7 +146,7 @@ $('history-close').onclick=()=>$('history-dialog').close();
 $('export').onclick=async()=>{
   try {
     const strip=r=>{const {media,...data}=r;return data;};
-    await api.export({target:strip(state.target),references:state.references.map(strip),ranges:state.ranges,transient_band:$('transient-band').value,vocal_ranges:state.vocalRanges,exported_at:new Date().toISOString()});
+    await api.export({target:strip(state.target),references:state.references.map(strip),ranges:state.ranges,transient_band:$('transient-band').value,vocal_ranges:state.vocalRanges,vocal_modes:state.vocalModes,exported_at:new Date().toISOString()});
   }catch(e){notice(e.message);}
 };
 document.querySelectorAll('#tabs button').forEach(b=>b.onclick=()=>{state.tab=b.dataset.tab;state.event=null;renderDashboard();});
@@ -231,7 +246,7 @@ function drawHeatmap(r,key){
   for(let j=0;j<columns;j++){
     const a=Math.floor(j*ids.length/columns),b=Math.max(a+1,Math.floor((j+1)*ids.length/columns));
     for(let k=0;k<bands;k++){
-      const val=median(ids.slice(a,b).map(i=>vocalValue(r,key,i,data[i][k])));if(!valid(val))continue;
+      const val=median(ids.slice(a,b).map(i=>vocalValue(r,key,i,data[i][k],k)));if(!valid(val))continue;
       const f=key==='side_pct'?val/100:key==='spectrum_db'?(val+75)/65:key==='mono_db'?-val/24:key==='band_correlation'?(1-val)/2:(18-val)/36;
       const t=Math.max(0,Math.min(1,f));ctx.fillStyle=`rgb(${Math.round(35+207*t)},${Math.round(72+107*t)},${Math.round(94+17*t)})`;
       ctx.fillRect(left+j*pw/columns,top+(bands-1-k)*ph/bands,Math.ceil(pw/columns),Math.ceil(ph/bands));
