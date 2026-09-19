@@ -7,6 +7,7 @@ from pathlib import Path
 import sys
 import traceback
 import contextlib
+from contextlib import contextmanager
 import numpy as np
 import soundfile as sf
 from .analysis import VERSION, SR, PARTS, load_audio, analyze
@@ -33,6 +34,31 @@ def digest(path):
     return h.hexdigest()
 
 
+@contextmanager
+def separation_progress(model, start=12, end=50):
+    """Convert completed Demucs chunks into application progress updates."""
+    import demucs.apply as demucs_apply
+    original_tqdm = demucs_apply.tqdm.tqdm
+    passes = max(1, len(getattr(model, "models", [model])))
+    completed = 0
+
+    def tracked(iterable, **_kwargs):
+        nonlocal completed
+        items = list(iterable)
+        total = max(1, len(items) * passes)
+        for item in items:
+            yield item
+            completed += 1
+            percent = min(end - 1, start + round((end - start) * completed / total))
+            progress(percent, "4パートに分離中")
+
+    demucs_apply.tqdm.tqdm = tracked
+    try:
+        yield
+    finally:
+        demucs_apply.tqdm.tqdm = original_tqdm
+
+
 def separate(mix, model_name, device="auto"):
     import torch
     from demucs.pretrained import get_model
@@ -49,7 +75,7 @@ def separate(mix, model_name, device="auto"):
     with contextlib.redirect_stdout(sys.stderr):
         model = get_model(model_name)
     model.eval()
-    progress(12, f"4パートに分離中 / {device.upper()}（数分以上かかる場合があります）")
+    progress(12, f"4パートに分離中 / {device.upper()}")
     with contextlib.redirect_stdout(sys.stderr):
         tensor = torch.from_numpy(mix.T.copy())
         ref = tensor.mean(0)
@@ -62,12 +88,13 @@ def separate(mix, model_name, device="auto"):
             return {k: np.zeros_like(mix) for k in PARTS}, device
         tensor = (tensor-mean)/std
         try:
-            with torch.inference_mode():
+            with torch.inference_mode(), separation_progress(model):
                 sources = apply_model(model, tensor[None], device=device, shifts=1, overlap=.25,
                                       split=True, progress=True, num_workers=0)[0]
         except torch.cuda.OutOfMemoryError as exc:
             raise RuntimeError("GPUメモリが不足しました。GPUを使う他のアプリを閉じるか、分離デバイスをCPUに変更して再実行してください。") from exc
         sources = (sources*std+mean).cpu().numpy()
+        progress(50, "分離結果を変換中")
     return {name: sources[i].T.astype(np.float32) for i,name in enumerate(model.sources)}, device
 
 

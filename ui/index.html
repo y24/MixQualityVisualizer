@@ -9,17 +9,17 @@
 </head>
 <body>
   <aside class="sidebar">
-    <div class="brand"><span class="brand-icon">Ⅲ</span><div>Mix Atlas<small>LISTEN WITH PERSPECTIVE</small></div></div>
+    <div class="brand"><span class="brand-icon">Ⅲ</span><div>Mix Atlas <small class="version">v0.1</small></div></div>
     <div class="section-label">ワークスペース <span>01</span></div>
     <button id="add-target" class="primary full">＋ 解析する音源</button>
     <div id="target-list" class="track-list"><p class="quiet">ミックスを選択してください</p></div>
     <div class="section-label reference-label">リファレンス <button id="add-reference" class="icon" title="リファレンスを追加" aria-label="リファレンスを追加">＋</button></div>
     <div id="reference-list" class="track-list"><p class="quiet">目標の音を並べて比較</p></div>
     <button id="history" class="secondary full">保存済みの解析を開く</button>
-    <div class="sidebar-bottom"><span class="status-dot"></span> LOCAL AUDIO ONLY<p id="engine-status">解析エンジンを確認中…</p><button id="engine-manage" class="text-button">解析環境</button><button id="demo" class="text-button">合成デモで試す →</button></div>
+    <div class="sidebar-bottom"><p id="engine-status">解析エンジンを確認中…</p><button id="engine-manage" class="text-button">解析環境</button><button id="demo" class="text-button">合成デモで試す →</button></div>
   </aside>
   <main>
-    <header><div><div class="eyebrow">MIX ANALYSIS / WORKSPACE</div><h1 id="track-title">音の関係を、見える形に。</h1><p id="track-meta">ボーカル、リズム、帯域、音像。リファレンスと聴き比べるための地図。</p></div><button id="export" class="secondary" disabled>解析をエクスポート ↗</button></header>
+    <header><div><h1 id="track-title">ミックス解析</h1><p id="track-meta">解析する音源を選択してください</p></div><button id="export" class="secondary" disabled>解析をエクスポート ↗</button></header>
     <div id="notice" class="notice" role="status" hidden></div>
     <section id="engine-setup" class="panel" hidden aria-label="初回セットアップ">
       <h2>解析環境のセットアップ</h2>
@@ -32,13 +32,13 @@
       <button id="engine-select" class="secondary">準備済みの python.exe を指定</button>
       <button id="engine-close" class="text-button">閉じる</button>
     </section>
-    <div id="progress-panel" class="progress-panel" hidden><div><span class="spinner"></span><strong id="progress-message">準備中</strong><button id="cancel" class="text-button">キャンセル</button></div><progress id="progress" max="100" value="0"></progress></div>
+    <div id="progress-panel" class="progress-panel" hidden><div><span class="spinner"></span><strong id="progress-message">準備中</strong><span id="progress-percent" aria-live="polite">0%</span><button id="cancel" class="text-button">キャンセル</button></div><progress id="progress" max="100" value="0"></progress></div>
     <nav id="tabs" aria-label="分析項目">
       <button data-tab="overview" class="active">概要</button><button data-tab="vocals">ボーカル</button><button data-tab="drums">ドラム</button><button data-tab="bass">ベース・低域</button><button data-tab="spatial">M/S・音像</button><button data-tab="density">密集度・競合</button>
     </nav>
     <section id="empty" class="empty">
       <div class="empty-visual" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
-      <div class="eyebrow">YOUR MIX, IN CONTEXT</div><h2>最初のミックスを読み込む</h2><p>完成音源から4パートを分離。<br>ステムがあれば、そのまま詳しい解析に使えます。</p>
+      <h2>最初のミックスを読み込む</h2><p>完成音源から4パートを分離。<br>ステムがあれば、そのまま詳しい解析に使えます。</p>
       <button id="empty-import" class="primary">音源を選択 →</button><small>WAV / FLAC / MP3 ・ 音源はPCの外に送信されません</small>
       <div class="empty-features"><div><b>01</b>声と伴奏の距離</div><div><b>02</b>リズムと低域の存在感</div><div><b>03</b>広がりと音の重なり</div></div>
     </section>
@@ -64,11 +64,10 @@
       <div id="transient-panel" class="panel" hidden><div class="panel-heading"><div><h2>一打の形を見る</h2><p>青緑：解析対象（クリックで選択）・紫：リファレンス / 横軸：打音の相対レベル / 縦軸：アタック／ボディ比</p></div><label>打音の解析帯域<select id="transient-band"><option value="full">全帯域</option><option value="low">低域 20–200 Hz</option><option value="mid">中域 200 Hz–2 kHz</option><option value="high">高域 2–20 kHz</option></select></label><label>打音タイプ（推定）<select id="transient-type"><option value="all">すべて</option><option value="low_tonal">低域・有音程型</option><option value="broad_noise">広帯域ノイズ型</option><option value="high_noise">高域ノイズ型</option><option value="unknown">複合・不明</option></select></label><span id="event-count" class="badge"></span></div><div class="two-columns chart-columns"><canvas id="scatter" height="220" aria-label="ドラムイベントの散布図"></canvas><div><div class="envelope-controls"><label>包絡の表示<select id="envelope-mode"><option value="normalized">ピーク正規化（形状）</option><option value="absolute">元の振幅（共通軸）</option></select></label><label>比較するREF<select id="envelope-reference"><option value="">比較なし</option></select></label><label>REFの打音<select id="envelope-event" disabled></select></label><button id="envelope-listen-reference" class="text-button" disabled>REFの打音へ移動</button></div><p id="envelope-description" class="subtle"></p><canvas id="envelope" height="180" aria-label="選択した打音の包絡"></canvas><p id="event-detail" class="subtle"></p></div></div></div>
       <div class="panel notes"><h2>この数値の読み方</h2><div id="notes"></div><details><summary>測定条件・制約</summary><div id="method"></div></details></div>
     </section>
-    <footer>Mix Atlas <span>v0.1 · 数値は判断材料です。最後は音を聴いて確かめてください。</span></footer>
   </main>
   <div class="transport"><div class="transport-label"><span class="status-dot"></span><div><strong id="playing-name">音源未選択</strong><small id="preview-gain">ゲイン補正なし</small></div></div><select id="listen-track" aria-label="試聴する曲" disabled></select><select id="listen-source" aria-label="試聴する成分" disabled><option value="mix">元ステレオ</option></select><audio id="audio" controls preload="metadata"></audio></div>
   <dialog id="import-dialog"><form id="import-form">
-    <div class="dialog-heading"><div class="eyebrow">IMPORT AUDIO</div><h2 id="import-title">解析する音源</h2></div>
+    <div class="dialog-heading"><h2 id="import-title">解析する音源</h2></div>
     <button id="choose-mix" type="button" class="file-picker">＋ ミックス音源を選択</button>
     <label class="field-label">解析方法<select id="import-mode"><option value="separate">自動で4パートに分離</option><option value="stems">書き出した4ステムを指定</option><option value="mix">元音源のみ（帯域・M/S・密集度）</option></select></label>
     <div id="model-field">
@@ -80,7 +79,7 @@
     <div id="stem-fields" hidden></div><p id="import-error" class="error" role="alert"></p>
     <div class="dialog-actions"><button id="import-close" type="button" class="secondary">閉じる</button><button id="import-submit" type="submit" class="primary">解析を開始 →</button></div>
   </form></dialog>
-  <dialog id="history-dialog"><div class="dialog-heading"><div class="eyebrow">LOCAL CACHE</div><h2>保存済みの解析</h2></div><div id="history-items"></div><div class="dialog-actions"><button id="history-close" class="secondary">閉じる</button></div></dialog>
+  <dialog id="history-dialog"><div class="dialog-heading"><h2>保存済みの解析</h2></div><div id="history-items"></div><div class="dialog-actions"><button id="history-close" class="secondary">閉じる</button></div></dialog>
   <script src="envelopes.js"></script><script src="rhythm.js"></script><script src="vocal-ranges.js"></script><script src="app.js"></script>
 </body>
 </html>

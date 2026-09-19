@@ -64,7 +64,7 @@ function stat(track,key) {
 function refsFor(track) { return state.references.filter(r=>r.max_frequency===track.max_frequency&&r.version===track.version); }
 function refStat(key) { return median(refsFor(state.target).map(r=>stat(r,key))); }
 function setBusy(busy) { state.busy=busy;$('progress-panel').hidden=!busy;for(const id of ['add-target','add-reference','demo','empty-import','history'])$(id).disabled=busy; }
-api?.onProgress(msg=>{ $('progress').value=msg.percent;$('progress-message').textContent=msg.message; });
+api?.onProgress(msg=>{ const percent=Math.max(0,Math.min(100,Math.round(msg.percent)));$('progress').value=percent;$('progress-percent').textContent=`${percent}%`;$('progress-message').textContent=msg.message; });
 
 function addResult(result,role) {
   if(!(result.id in state.rhythmSettings)){
@@ -81,7 +81,7 @@ function addResult(result,role) {
   state.event=null;render();refreshPlayer();
 }
 async function analyze(request,role) {
-  notice();setBusy(true);$('progress').value=0;$('progress-message').textContent='解析を開始しています';
+  notice();setBusy(true);$('progress').value=0;$('progress-percent').textContent='0%';$('progress-message').textContent='解析を開始しています';
   try {addResult(await api.analyze(request),role);}
   catch(e) {notice(e.message);}
   finally {setBusy(false);}
