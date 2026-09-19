@@ -21,7 +21,7 @@ for(const directory of ['backend','desktop','ui'])fs.cpSync(path.join(root,direc
 for(const file of ['analysis-version.json','requirements-runtime.txt'])fs.copyFileSync(path.join(root,file),path.join(app,file));
 fs.mkdirSync(path.join(app,'scripts'));fs.copyFileSync(path.join(root,'scripts','make_demo.py'),path.join(app,'scripts','make_demo.py'));
 fs.writeFileSync(path.join(app,'package.json'),JSON.stringify({name:'mix-atlas',version:'0.1.0',main:'desktop/main.cjs',private:true},null,2));
-fs.writeFileSync(path.join(app,'engine-config.json'),JSON.stringify({mode:'external-python',python:'3.13',torch:'2.8.0'}));
+fs.writeFileSync(path.join(app,'engine-config.json'),JSON.stringify({mode:'external-python',python:'>=3.13',torch:'2.8.0'}));
 // Build-time Python is used only for synthetic fixtures and archive creation.
 const python=path.join(root,'.venv','Scripts','python.exe');
 execFileSync(python,[path.join(app,'scripts','make_demo.py')],{stdio:'inherit',windowsHide:true});

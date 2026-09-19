@@ -21,7 +21,7 @@ if ($branches -eq '0') {
 }
 & $gh release view "v$version" --repo $Repository 2>$null | Out-Null
 if ($LASTEXITCODE -ne 0) {
-  & $gh release create "v$version" --repo $Repository --draft --title "Mix Atlas $version" --notes 'Requires Python 3.13 x64 or uv. Analysis packages are downloaded directly from upstream sources during setup. No Python or analysis runtime is bundled.'
+  & $gh release create "v$version" --repo $Repository --draft --title "Mix Atlas $version" --notes 'Requires Python 3.13 or later x64, or uv. Analysis packages are downloaded directly from upstream sources during setup. No Python or analysis runtime is bundled.'
   if ($LASTEXITCODE -ne 0) { throw 'Releaseを作成できませんでした。' }
 }
 $isDraft = & $gh release view "v$version" --repo $Repository --json isDraft --jq '.isDraft'

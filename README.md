@@ -10,7 +10,7 @@ Windowsで動作するローカル解析アプリの初期実装です。ボー�
 npm.cmd start
 ```
 
-初めて別の環境へ配置する場合は、Windows x64、Python 3.13、Node.js 22以上を用意し、PowerShellで実行します。
+初めて別の環境へ配置する場合は、Windows x64、Python 3.13以上、Node.js 22以上を用意し、PowerShellで実行します。
 
 ```powershell
 .\setup.ps1
@@ -24,13 +24,13 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\setup.ps1
 
 `setup.ps1`は、このフォルダー内の`.venv`へPython依存関係を、`node_modules`へElectronをインストールします。Pythonは`requirements-lock.txt`、Nodeは`package-lock.json`に固定したバージョンを使用します。PythonやNodeのグローバル環境は変更しません。
 
-ソース版の開発にはPythonとNode.jsを使います。配布版はPython・解析ライブラリを同梱しません。利用者側にはPython 3.13 x64（pip/venv付き）またはuvが必要です。Node.jsは不要です。
+ソース版の開発にはPythonとNode.jsを使います。配布版はPython・解析ライブラリを同梱しません。利用者側にはPython 3.13以上 x64（pip/venv付き）またはuvが必要です。Node.jsは不要です。
 
 ## Windows配布版
 
 `npm run build:windows` で、アプリ本体・Electron・合成デモのみを含むフォルダーと配布ZIPを生成します。
 初回起動時に「専用環境を作成」を選ぶと、CPU版またはCUDA 12.8版を選んで準備できます。
-uvがあれば優先し、なければPython/pipを使います。uvのみの場合はPython 3.13も取得します。
+uvがあれば優先し、なければPython/pipを使います。uvのみの場合はPython 3.13以上を取得します。
 PyTorch/torchaudioは公式PyTorch配布元、その他のライブラリはPyPIから利用者のPCへ直接取得します。
 専用環境は `%APPDATA%/MixAtlas/engines/venv-...` に作り、既存のPythonへはインストールしません。
 実行用依存関係は `requirements-runtime.txt` に固定し、開発用pytestなどは導入しません。

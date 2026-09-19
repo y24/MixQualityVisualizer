@@ -27,6 +27,7 @@ test('uv installs into a private venv using separate upstream indexes',async t=>
  assert.equal(engine.status().ready,false);
  await engine.install(()=>{},{variant:'cu128',manager:'uv'});
  assert.equal(engine.status().ready,true);
+ assert.ok(calls.some(c=>c.executable==='uv' && c.args.includes('venv') && c.args.includes('>=3.13')));
  const installs=calls.filter(c=>c.args.includes('install'));
  assert.equal(installs.length,2);
  assert.ok(installs[0].args.includes('https://download.pytorch.org/whl/cu128'));
@@ -44,6 +45,7 @@ test('pip fallback uses only the new venv and a failed setup can retry',async t=
  options.failPackages=false;
  await engine.install(()=>{});
  assert.equal(engine.status().ready,true);
+ assert.ok(calls.some(c=>c.executable==='py' && c.args[0]==='-3'));
  assert.ok(calls.filter(c=>c.args.includes('install')).every(c=>c.executable===engine.python));
  assert.equal(calls.filter(c=>c.args.includes('venv')).length,1);
 });
@@ -58,5 +60,5 @@ test('unavailable tools and invalid options leave setup unconfigured',async t=>{
  const root=fixture(t);let calls=0;
  const engine=new Engine(root,path.join(root,'cache'),async()=>{calls++;throw new Error('ENOENT');});
  await assert.rejects(engine.install(()=>{},{variant:'invalid'}),/不正/);assert.equal(calls,0);
- await assert.rejects(engine.install(()=>{}),/Python 3.13/);assert.equal(engine.status().ready,false);
+ await assert.rejects(engine.install(()=>{}),/Python 3.13以上/);assert.equal(engine.status().ready,false);
 });

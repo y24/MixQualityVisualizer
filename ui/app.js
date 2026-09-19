@@ -477,7 +477,7 @@ if(api){
     catch(e){$('engine-setup-message').textContent=e.message;}
     finally{setupBusy(false);}
   };
-  $('engine-manage').onclick=async()=>{$('engine-setup').hidden=false;const status=await api.engineStatus();$('engine-setup-message').textContent=status.python?`使用中: ${status.python}`:'Python 3.13 または uv を準備してセットアップしてください。';};
+  $('engine-manage').onclick=async()=>{$('engine-setup').hidden=false;const status=await api.engineStatus();$('engine-setup-message').textContent=status.python?`使用中: ${status.python}`:'Python 3.13以上 または uv を準備してセットアップしてください。';};
   $('engine-close').onclick=()=>{$('engine-setup').hidden=true;};
   initializeEngine();
 }

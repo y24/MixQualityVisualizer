@@ -23,7 +23,7 @@
     <div id="notice" class="notice" role="status" hidden></div>
     <section id="engine-setup" class="panel" hidden aria-label="初回セットアップ">
       <h2>解析環境のセットアップ</h2>
-      <p>Python 3.13（64-bit）または uv を用意してください。専用環境を作り、PyTorch公式・PyPIからライブラリを取得します。uvのみの場合はPythonも取得します。分離モデルは初回分離時に自動取得します。</p>
+      <p>Python 3.13以上（64-bit）または uv を用意してください。専用環境を作り、PyTorch公式・PyPIからライブラリを取得します。uvのみの場合はPythonも取得します。分離モデルは初回分離時に自動取得します。</p>
       <p><label>処理環境 <select id="engine-variant"><option value="cpu">CPU（ダウンロード容量が少ない）</option><option value="cu128">NVIDIA GPU / CUDA 12.8（数GB・対応ドライバーが必要）</option></select></label>
       <label>セットアップ方法 <select id="engine-manager"><option value="auto">自動（uv優先）</option><option value="python">Python + pip</option><option value="uv">uv</option></select></label></p>
       <p id="engine-setup-message" role="status"></p>

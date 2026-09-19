@@ -1,7 +1,7 @@
 Mix Atlas - Windows版（Python・解析ライブラリ非同梱）
 
 フォルダー全体を、書き込み可能な場所に配置してMixAtlas.exeを起動してください。
-利用者側に Python 3.13（64-bit、pip/venv付き）または uv が必要です。
+利用者側に Python 3.13以上（64-bit、pip/venv付き）または uv が必要です。
 Node.jsのインストールは不要です。
 
 初回の「解析環境のセットアップ」でCPU版またはNVIDIA GPU版を選び、
@@ -12,7 +12,7 @@ https://pypi.org から利用者のPCへ直接取得します。独自のエン�
 Python・uvをインストールした直後は、Mix Atlasを再起動してください。
 
 依存関係を準備済みの場合は「準備済みの python.exe を指定」も使えます。
-Python 3.13 x64、PyTorch/torchaudio 2.8.0、resources/app/requirements-runtime.txt
+Python 3.13以上 x64、PyTorch/torchaudio 2.8.0、resources/app/requirements-runtime.txt
 のバージョンを検証してから利用します。既存環境を自動変更しません。
 画面左下の「解析環境」から再設定できます。
 

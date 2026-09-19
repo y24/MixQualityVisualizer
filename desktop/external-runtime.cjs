@@ -16,10 +16,10 @@ function run(executable, args, progress = () => {}) {
   });
 }
 
-const PROBE = 'import sys,struct,json; assert sys.version_info[:2]==(3,13) and struct.calcsize("P")==8, "Python 3.13 (64-bit) が必要です"; print(json.dumps({"python":sys.executable}))';
+const PROBE = 'import sys,struct,json; assert sys.version_info >= (3,13) and struct.calcsize("P")==8, "Python 3.13以上（64-bit）が必要です"; print(json.dumps({"python":sys.executable}))';
 const VALIDATE = `import sys,struct,importlib.metadata as m
 from pathlib import Path
-assert sys.version_info[:2]==(3,13) and struct.calcsize('P')==8, 'Python 3.13 (64-bit) が必要です'
+assert sys.version_info >= (3,13) and struct.calcsize('P')==8, 'Python 3.13以上（64-bit）が必要です'
 for line in Path(sys.argv[1]).read_text(encoding='utf8').splitlines():
  if not line.strip() or line.startswith('#'): continue
  name,version=line.strip().split('==')
@@ -37,7 +37,7 @@ class Engine {
     this.root = root; this.cache = cache; this.run = runner;
     this.packaged = fs.existsSync(path.join(root,'engine-config.json'));
     this.requirements = path.join(root,'requirements-runtime.txt');
-    this.key = createHash('sha256').update(fs.readFileSync(this.requirements)).update('python313-torch280-v1').digest('hex').slice(0,16);
+    this.key = createHash('sha256').update(fs.readFileSync(this.requirements)).update('python>=313-torch280-v2').digest('hex').slice(0,16);
     this.settings = path.join(cache,`selection-${this.key}.json`);
   }
   get python() {
@@ -73,13 +73,13 @@ class Engine {
       try { await this.run('uv',['--version']); return {kind:'uv',executable:'uv'}; }
       catch { if(preference==='uv') throw new Error('uvが見つかりません。uvをインストールしてアプリを再起動してください。'); }
     }
-    for(const [executable,prefix] of [['py',['-3.13']],['python',[]]]) {
+    for(const [executable,prefix] of [['py',['-3']],['python',[]]]) {
       try {
         const output=await this.run(executable,[...prefix,'-I','-c',PROBE]);
         return {kind:'pip',executable:JSON.parse(output).python};
       }catch { /* Try the next installed interpreter. */ }
     }
-    throw new Error('Python 3.13 (64-bit) または uv をインストールしてアプリを再起動してください。準備済み環境の python.exe を指定することもできます。');
+    throw new Error('Python 3.13以上（64-bit）または uv をインストールしてアプリを再起動してください。準備済み環境の python.exe を指定することもできます。');
   }
   install(progress, options={}) {
     const {variant='cpu',manager='auto'}=options || {};
@@ -96,7 +96,7 @@ class Engine {
     // Create directly at its final path: moving a venv can break its scripts.
     if(!fs.existsSync(python)) {
       progress({message:tool.kind==='uv'?'uvで専用環境を作成中（必要ならPythonも取得）…':'Pythonで専用環境を作成中…'});
-      if(tool.kind==='uv') await this.run('uv',['--no-config','venv','--python','3.13',environment],progress);
+      if(tool.kind==='uv') await this.run('uv',['--no-config','venv','--python','>=3.13',environment],progress);
       else await this.run(tool.executable,['-I','-m','venv',environment],progress);
     }
     // uv venvs need not contain pip. Switching setup tools must still work.
