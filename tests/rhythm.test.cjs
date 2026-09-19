@@ -11,3 +11,9 @@ test('manual grid overrides uncertain automatic detection',()=>{
   assert.equal(Rhythm.beats(data,4,{bpm:60,offset:.1}).length,4);
   for(const settings of [{bpm:0,offset:0},{bpm:Infinity,offset:0},{bpm:120,offset:-1},{bpm:120,offset:4}])assert.throws(()=>Rhythm.beats(data,4,settings));
 });
+test('adaptive beat times are used without filling uncertain gaps',()=>{
+  const changed={...data,bpm:null,offset:null,adaptive:{beats:[{time:.2},{time:.7},{time:2.3},{time:3.95}]}};
+  const beats=Rhythm.beats(changed,4,{mode:'adaptive'});
+  assert.deepEqual(beats.map(b=>b.time),[.2,.7,2.3]);
+  assert.ok(beats.every(b=>Math.abs(b.relative_db-6)<1e-8));
+});

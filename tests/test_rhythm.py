@@ -35,3 +35,33 @@ def test_silence_and_short_audio_do_not_invent_beats():
 def test_irregular_noise_is_uncertain():
     x=np.random.default_rng(18).normal(0,.01,(44100*6,2)).astype(np.float32)
     assert rhythm(x,x)['bpm'] is None
+
+
+def test_local_beats_follow_tempo_change_without_inventing_pause_hits():
+    from backend.rhythm import adaptive_pulses
+    times=np.r_[np.arange(.2,16,.5),np.arange(16.2,32,.4)]
+    novelty=np.zeros(3200)
+    novelty[np.rint(times*100).astype(int)]=1
+    result=adaptive_pulses(novelty)
+    assert result['sections'][4]['bpm']==pytest.approx(120)
+    assert result['sections'][12]['bpm']==pytest.approx(150)
+    actual=np.array([b['time'] for b in result['beats']])
+    assert len(actual)>len(times)*.8
+    assert all(np.min(np.abs(times-t))<.011 for t in actual)
+    novelty[1200:2000]=0
+    result=adaptive_pulses(novelty)
+    assert not any(12<=b['time']<20 for b in result['beats'])
+
+
+def test_local_beats_handle_gradual_tempo_and_silence():
+    from backend.rhythm import adaptive_pulses
+    time=.2;times=[]
+    while time<40:
+        times.append(time);time+=60/(90+time*1.5)
+    novelty=np.zeros(4000)
+    novelty[np.rint(np.array(times)*100).astype(int)]=1
+    result=adaptive_pulses(novelty)
+    actual=[b['time'] for b in result['beats']]
+    assert len(actual)>len(times)*.5
+    assert all(min(abs(t-v) for v in times)<.011 for t in actual)
+    assert adaptive_pulses(novelty*0)['beats']==[]

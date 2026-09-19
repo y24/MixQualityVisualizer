@@ -59,6 +59,15 @@ test('desktop imports synthetic stems, analyzes, plays and compares cached refer
   const delta=await page.locator('#cards .card-delta').first().innerText();
   expect(parseFloat(delta)).toBeGreaterThan(2);
   await expect(page.locator('#event-count')).toContainText('REF');
+  await page.locator('#envelope-reference').selectOption({index:1});
+  await expect(page.locator('#event-detail')).toContainText('REF');
+  await page.locator('#envelope-event').selectOption({index:1});
+  await page.locator('#envelope-mode').selectOption('absolute');
+  await expect(page.locator('#envelope-description')).toContainText('曲間ゲイン補正なし');
+  await page.locator('#envelope-listen-reference').click();
+  await expect(page.locator('#listen-track')).toHaveValue(await page.locator('#envelope-reference').inputValue());
+  await expect.poll(()=>page.locator('#audio').evaluate(a=>a.currentTime)).toBeCloseTo(await page.evaluate(()=>referenceEvent.time),1);
+  await page.screenshot({path:'test-results/desktop-envelope.png',fullPage:true});
   await page.locator('#transient-type').selectOption('low_tonal');
   expect(await page.evaluate(()=>transientEvents(state.target).every(e=>e.sound_type==='low_tonal'))).toBe(true);
   await expect(page.locator('#detail')).toContainText('10–90%範囲');
@@ -203,4 +212,12 @@ test('beat grid supports manual tempo, reference summary and persistence',async(
   await expect(page.locator('#notice')).toContainText('BPMは30');
   await page.locator('#rhythm-auto').click();
   await expect(page.locator('#rhythm-status')).not.toContainText('手動指定');
+  await page.locator('#rhythm-mode').selectOption('adaptive');
+  await expect(page.locator('#rhythm-bpm')).toBeDisabled();
+  await page.reload();await page.locator('#demo').click();
+  await expect(page.locator('#progress-panel')).toBeHidden({timeout:90000});
+  await page.getByRole('button',{name:'ドラム',exact:true}).click();
+  await expect(page.locator('#rhythm-mode')).toHaveValue('adaptive');
+  await expect(page.locator('#rhythm-bpm')).toBeDisabled();
+  await page.locator('#rhythm-mode').selectOption('fixed');
 });

@@ -1,4 +1,4 @@
-"""Fixed-tempo pulse proposal and compact power envelopes, not downbeat detection."""
+"""Fixed/local tempo pulse proposals and power envelopes, not downbeat detection."""
 import numpy as np
 from scipy import signal, ndimage
 
@@ -15,15 +15,25 @@ def rhythm(drums, rest, sr=44100):
     novelty = np.maximum(0, amplitude-np.r_[amplitude[0], amplitude[:-1]])
     novelty = np.maximum(0, novelty-ndimage.uniform_filter1d(novelty,21))
     maximum = float(novelty.max())
-    if maximum > 0:
+    if maximum > 1e-6:
         novelty /= maximum
+    else:
+        novelty[:] = 0
     def db(x):
         return np.where(x>1e-12,10*np.log10(np.maximum(x,1e-12)),np.nan)
     result = {'step':dt, 'drum_dbfs':db(p), 'rest_dbfs':db(r),
               'bpm':None, 'offset':None, 'periodicity':0., 'candidates':[],
               'method':'fixed-tempo autocorrelation, 60–200 BPM, 10 ms envelope',
               'status':'insufficient'}
-    if len(p)<400 or maximum<1e-6 or np.count_nonzero(novelty>.2)<4:
+    result.update(estimate(novelty,dt))
+    result['adaptive'] = adaptive_pulses(novelty,dt)
+    return result
+
+
+def estimate(novelty, dt=.01):
+    result = {'bpm':None, 'offset':None, 'periodicity':0., 'candidates':[], 'status':'insufficient'}
+    maximum = float(novelty.max()) if len(novelty) else 0.
+    if len(novelty)<400 or maximum<1e-6 or np.count_nonzero(novelty>.2)<4:
         return result
     y = novelty-novelty.mean()
     ac = signal.correlate(y,y,mode='full',method='fft')[len(y)-1:]
@@ -50,3 +60,42 @@ def rhythm(drums, rest, sr=44100):
     phase = int(np.argmax([novelty[i::period].sum() for i in range(period)]))
     result.update(bpm=float(60/(period*dt)), offset=phase*dt, status='estimated')
     return result
+
+
+
+def adaptive_pulses(novelty,dt=.01):
+    """Local tempo proposals snapped to observed onsets; leave uncertain gaps."""
+    window=int(8/dt)
+    step=int(2/dt)
+    duration=len(novelty)*dt
+    beats=[];sections=[]
+    for start in range(0,len(novelty),step):
+        end=min(len(novelty),start+step)
+        center=(start+end)//2
+        lo=max(0,center-window//2)
+        hi=min(len(novelty),lo+window)
+        lo=max(0,hi-window)
+        local=novelty[lo:hi]
+        maximum=float(local.max()) if len(local) else 0.
+        proposed=estimate(local/maximum if maximum>0 else local,dt)
+        section={'start':start*dt,'end':min(duration,end*dt),
+                 'bpm':proposed['bpm'],'periodicity':proposed['periodicity']}
+        sections.append(section)
+        if proposed['bpm'] is None or maximum<.01:continue
+        period=60/proposed['bpm']
+        origin=lo*dt+proposed['offset']
+        first=max(0,int(np.ceil((start*dt-origin)/period)))
+        radius=max(1,int(min(.08,period*.2)/dt))
+        for n in range(first,first+int(2/period)+3):
+            time=origin+n*period
+            if time>=end*dt:break
+            index=int(round(time/dt))
+            a=max(start,index-radius);b=min(end,index+radius+1)
+            if b<=a:continue
+            snapped=a+int(np.argmax(novelty[a:b]))
+            # Do not hallucinate a pulse in a pause or a weak/unsupported region.
+            if novelty[snapped]<maximum*.15:continue
+            actual=snapped*dt
+            if beats and actual-beats[-1]['time']<.2:continue
+            beats.append({'time':actual,'bpm':proposed['bpm'],'periodicity':proposed['periodicity']})
+    return {'beats':beats,'sections':sections,'method':'8 s local autocorrelation / 2 s regions / onset snap <=80 ms'}

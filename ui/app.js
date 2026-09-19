@@ -152,7 +152,7 @@ $('history-close').onclick=()=>$('history-dialog').close();
 $('export').onclick=async()=>{
   try {
     const strip=r=>{const {media,...data}=r;return data;};
-    await api.export({target:strip(state.target),references:state.references.map(strip),ranges:state.ranges,transient_band:$('transient-band').value,transient_type:$('transient-type').value,vocal_ranges:state.vocalRanges,vocal_modes:state.vocalModes,rhythm_settings:state.rhythmSettings,exported_at:new Date().toISOString()});
+    await api.export({target:strip(state.target),references:state.references.map(strip),ranges:state.ranges,transient_band:$('transient-band').value,transient_type:$('transient-type').value,vocal_ranges:state.vocalRanges,vocal_modes:state.vocalModes,envelope_comparison:{mode:$('envelope-mode').value,reference_id:$('envelope-reference').value,reference_time:referenceEvent?.time??null,target_time:state.event?.time??null},rhythm_settings:state.rhythmSettings,exported_at:new Date().toISOString()});
   }catch(e){notice(e.message);}
 };
 document.querySelectorAll('#tabs button').forEach(b=>b.onclick=()=>{state.tab=b.dataset.tab;state.event=null;renderDashboard();});
@@ -237,16 +237,20 @@ $('rhythm-apply').onclick=()=>{
   if(!$('rhythm-bpm').value||!$('rhythm-offset').value){notice('BPMと最初の拍を入力してください。');return;}
   saveRhythm({bpm:Number($('rhythm-bpm').value),offset:Number($('rhythm-offset').value)});
 };
+$('rhythm-mode').onchange=()=>saveRhythm($('rhythm-mode').value==='adaptive'?{mode:'adaptive'}:null);
 $('rhythm-auto').onclick=()=>saveRhythm(null);
 $('rhythm-metric').onchange=()=>{if(state.target)renderRhythm(state.target);};
 function renderRhythm(r){
   const data=r.transients?.rhythm;$('rhythm-panel').hidden=state.tab!=='drums'||!data;
   if($('rhythm-panel').hidden)return;
   const setting=state.rhythmSettings[r.id],key=$('rhythm-metric').value;
+  const adaptive=setting?.mode==='adaptive';$('rhythm-mode').value=adaptive?'adaptive':'fixed';
+  for(const id of ['rhythm-bpm','rhythm-offset','rhythm-apply'])$(id).disabled=adaptive;
   $('rhythm-bpm').value=setting?.bpm??data.bpm??'';$('rhythm-offset').value=setting?.offset??data.offset??0;
   const candidates=data.candidates.map(c=>`${number(c.bpm)} BPM`).join(' / ');
-  $('rhythm-status').textContent=`${setting?'手動指定':data.bpm?'自動推定':'自動推定は不確かです。BPMと開始位置を指定してください。'} · 自動候補の周期性 ${number(data.periodicity,2)}（正解確率ではありません）${candidates?' · 候補 '+candidates:''}`;
+  $('rhythm-status').textContent=`${adaptive?'可変テンポ・局所推定':setting?'手動指定':data.bpm?'自動推定':'自動推定は不確かです。BPMと開始位置を指定してください。'} · 自動候補の周期性 ${number(data.periodicity,2)}（正解確率ではありません）${candidates?' · 候補 '+candidates:''}`;
   const beats=rhythmBeats(r),value=median(beats.map(b=>b[key]));
+  if(adaptive){const sections=(data.adaptive?.sections||[]).filter(s=>s.end>range(r)[0]&&s.start<range(r)[1]);const bpms=sections.map(s=>s.bpm).filter(valid);$('rhythm-status').textContent=`可変テンポ・局所推定 · 有効区間 ${bpms.length} / ${sections.length} · BPM ${bpms.length?number(Math.min(...bpms))+'–'+number(Math.max(...bpms)):'—'} · 不確かな区間は対象外`;}
   const reference=median(refsFor(r).map(t=>median(rhythmBeats(t).map(b=>b[key]))));
   $('rhythm-summary').textContent=`${beats.length} 拍候補 / 測定可能 ${beats.filter(b=>valid(b[key])).length} · 中央値 ${number(value)} dB · REF ${number(reference)} dB · 差 ${valid(value)&&valid(reference)?number(value-reference):'—'} dB`;
   const s=surface('rhythm-chart');grid(s,-24,24,'');const {ctx,w,h}=s;
@@ -345,10 +349,40 @@ function drawTransients(r){
   for(const e of events){if(!valid(e.relative_db)||!valid(e.attack_body_db))continue;const x=48+(w-60)*(Math.max(-30,Math.min(30,e.relative_db))+30)/60,y=15+(h-45)*(30-Math.max(-20,Math.min(30,e.attack_body_db)))/50;ctx.fillStyle=state.event===e?'#f1ba73':'#6bcac299';ctx.beginPath();ctx.arc(x,y,state.event===e?5:3,0,Math.PI*2);ctx.fill();plottedEvents.push({x,y,e});}
   if(!events.includes(state.event))state.event=events.find(e=>valid(e.attack_body_db))||events[0]||null;
   s.c.onclick=event=>{let best=null,d=Infinity;for(const p of plottedEvents){const n=Math.hypot(p.x-event.offsetX,p.y-event.offsetY);if(n<d){best=p;d=n;}}if(best&&d<25){state.event=best.e;seek(best.e.time);drawTransients(r);}};
-  const env=surface('envelope'),e=state.event;
-  if(!e){blank(env,'測定できる打音がありません');$('event-detail').textContent=transientData(r)?'この区間にはイベントがありません。':'この帯域のデータがありません。音源の周波数上限を確認してください。';return;}
-  const maximum=Math.max(...e.envelope,1e-12);env.ctx.strokeStyle='#f1ba73';env.ctx.lineWidth=1.6;env.ctx.beginPath();e.envelope.forEach((v,i)=>{const x=15+i/Math.max(1,e.envelope.length-1)*(env.w-30),y=15+(env.h-40)*(1-v/maximum);if(i)env.ctx.lineTo(x,y);else env.ctx.moveTo(x,y);});env.ctx.stroke();env.ctx.fillStyle='#8996a5';env.ctx.fillText('ピーク正規化した包絡 / 約240 ms',15,env.h-5);
-  $('event-detail').textContent=`${e.time.toFixed(3)} 秒 · ${$('transient-band').value==='full'?soundTypes[e.sound_type||'unknown']:'帯域内イベント'} · 立ち上がり ${number(e.attack_ms)} ms · A/B ${number(e.attack_body_db)} dB · 減衰 ${number(e.decay_ms)} ms`;
+  drawEnvelope(r);
+}
+let referenceEvent=null;
+$('envelope-reference').onchange=()=>{referenceEvent=null;if(state.target)drawEnvelope(state.target);};
+$('envelope-event').onchange=()=>{referenceEvent=null;if(state.target)drawEnvelope(state.target,true);};
+$('envelope-mode').onchange=()=>{if(state.target)drawEnvelope(state.target);};
+function drawEnvelope(r,chooseEvent=false){
+  const selected=$('envelope-reference').value;
+  $('envelope-reference').replaceChildren(text('option','比較なし'));$('envelope-reference').firstChild.value='';
+  for(const track of refsFor(r)){const option=text('option',track.name);option.value=track.id;$('envelope-reference').append(option);}
+  $('envelope-reference').value=refsFor(r).some(t=>t.id===selected)?selected:'';
+  const reference=refsFor(r).find(t=>t.id===$('envelope-reference').value);
+  const events=reference?transientEvents(reference).filter(e=>e.time>=range(reference)[0]&&e.time<range(reference)[1]):[];
+  const index=chooseEvent?Number($('envelope-event').value):events.indexOf(referenceEvent);
+  referenceEvent=events[index]||events[0]||null;
+  $('envelope-event').replaceChildren();
+  for(const [i,e] of events.entries()){const option=text('option',`${e.time.toFixed(3)} 秒 · A/B ${number(e.attack_body_db)} dB`);option.value=i;$('envelope-event').append(option);}
+  if(referenceEvent)$('envelope-event').value=events.indexOf(referenceEvent);
+  $('envelope-event').disabled=!events.length;$('envelope-listen-reference').disabled=!referenceEvent;
+  $('envelope-listen-reference').onclick=()=>{if(referenceEvent)seekTrack(reference,referenceEvent.time);};
+  const e=state.event,env=surface('envelope'),mode=$('envelope-mode').value;
+  const curves=Envelopes.curves([e,referenceEvent],mode);
+  if(!e&&!referenceEvent){$('envelope-description').textContent='';blank(env,'測定できる打音がありません');$('event-detail').textContent='この区間・帯域にはイベントがありません。';return;}
+  const maximum=mode==='normalized'?1:Math.max(1e-12,...curves.flat().map(p=>p.value).filter(valid));
+  const{ctx,w,h}=env;
+  for(const [i,curve] of curves.entries()){
+    ctx.strokeStyle=i?'#b29be3':'#f1ba73';ctx.lineWidth=1.6;ctx.beginPath();let pen=false;
+    for(const point of curve){if(!valid(point.value)||point.time < -10||point.time>240){pen=false;continue;}const x=40+(point.time+10)/250*(w-50),y=15+(h-45)*(1-point.value/maximum);if(pen)ctx.lineTo(x,y);else ctx.moveTo(x,y);pen=true;}ctx.stroke();
+  }
+  ctx.fillStyle='#8996a5';ctx.fillText(number(maximum,mode==='normalized'?1:4),0,18);ctx.fillText('0',20,h-30);
+  const onsetX=40+10/250*(w-50);ctx.strokeStyle='#8996a566';ctx.beginPath();ctx.moveTo(onsetX,15);ctx.lineTo(onsetX,h-30);ctx.stroke();
+  ctx.fillText('0 ms（オンセット）',onsetX,h-5);ctx.textAlign='right';ctx.fillText('240 ms',w-10,h-5);
+  $('envelope-description').textContent=mode==='normalized'?'各打音のピークを1にして形状を比較 · 黄：対象 / 紫：REF':'元信号のRMS振幅を共通軸で比較（曲間ゲイン補正なし）· 黄：対象 / 紫：REF';
+  $('event-detail').textContent=`${e?`対象 ${e.time.toFixed(3)} 秒 · 立ち上がり ${number(e.attack_ms)} ms · A/B ${number(e.attack_body_db)} dB · 減衰 ${number(e.decay_ms)} ms`:'対象イベントなし'}${referenceEvent?` / REF ${reference.name} ${referenceEvent.time.toFixed(3)} 秒 · A/B ${number(referenceEvent.attack_body_db)} dB`:''}`;
 }
 function refreshPlayer(){
   const selected=$('listen-track').value,tracks=[state.target,...state.references].filter(Boolean);$('listen-track').replaceChildren();
@@ -370,7 +404,8 @@ function changeAudio(preserve=true){
   $('playing-name').textContent=r.name;$('preview-gain').textContent=`共通試聴ゲイン ${number(r.preview_gain_db)} dB · 自動音量合わせ OFF`;
 }
 $('listen-track').onchange=updateSources;$('listen-source').onchange=()=>changeAudio(true);
-function seek(time){if(!state.target)return;if(currentListen()?.id!==state.target.id){$('listen-track').value=state.target.id;updateSources();$('audio').onloadedmetadata=()=>{$('audio').currentTime=time;};}else $('audio').currentTime=time;}
+function seekTrack(track,time){if(!track)return;if(currentListen()?.id!==track.id){$('listen-track').value=track.id;updateSources();$('audio').onloadedmetadata=()=>{$('audio').currentTime=time;};}else $('audio').currentTime=time;}
+function seek(time){seekTrack(state.target,time);}
 new ResizeObserver(()=>{if(state.target)renderDashboard();}).observe(document.querySelector('main'));
 if(api)api.health().then(displayHardware).catch(e=>{$('engine-status').textContent='環境のセットアップが必要です';notice(e.message);});
 else{$('engine-status').textContent='Electronから起動してください';notice('npm start でデスクトップアプリを起動してください。');}
