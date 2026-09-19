@@ -78,6 +78,29 @@ test('desktop imports synthetic stems, analyzes, plays and compares cached refer
   await page.locator('#transient-band').selectOption('full');
   expect(errors).toEqual([]);
 });
+test('structure candidates apply independently to target and reference ranges',async()=>{
+  await page.locator('#structure-panel summary').click();
+  await expect(page.locator('#structure-status')).toContainText('変化点');
+  await expect(page.locator('#structure-apply')).toBeEnabled();
+  const target=await page.evaluate(()=>state.target.id);
+  const targetRange=await page.evaluate(()=>range(state.target));
+  await page.locator('#structure-track').selectOption({index:1});
+  const reference=await page.locator('#structure-track').inputValue();
+  const segment=await page.evaluate(()=>structureSegment());
+  await page.locator('#structure-apply').click();
+  expect(await page.evaluate(id=>state.ranges[id],reference)).toEqual([segment.start,segment.end]);
+  expect(await page.evaluate(()=>range(state.target))).toEqual(targetRange);
+  await page.locator('#structure-listen').click();
+  await expect(page.locator('#listen-track')).toHaveValue(reference);
+  await page.locator('#structure-track').selectOption(target);
+  const targetSegment=await page.evaluate(()=>structureSegment());
+  await page.locator('#structure-apply').click();
+  await expect(page.locator('#range-start')).toHaveValue(targetSegment.start.toFixed(2));
+  await expect(page.locator('#range-end')).toHaveValue(targetSegment.end.toFixed(2));
+  await page.screenshot({path:'test-results/desktop-structure.png',fullPage:true});
+  await page.locator('#range-reset').click();
+});
+
 test('canceling analysis preserves the current result and allows a new job',async()=>{
   const previous=await page.locator('#track-title').innerText();
   const fixture=path.resolve(__dirname,'../../demo-audio/mix.wav');

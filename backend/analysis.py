@@ -11,6 +11,7 @@ from pathlib import Path
 import numpy as np
 from scipy import signal, ndimage, fft
 from .rhythm import rhythm
+from .structure import structure
 from .drum_types import describe_hits
 import soundfile as sf
 import pyloudnorm as pyln
@@ -350,7 +351,7 @@ def analyze(mix, stems=None, metadata=None, progress=lambda *_: None):
                   "max_frequency": max_freq, "loudness_lufs": loudness, "times": times,
                   "series": series, "summary": {k: summary(v) for k,v in series.items()},
                   "heatmaps": heatmaps, "band_centers": np.sqrt(ERB_EDGES[:-1]*ERB_EDGES[1:]),
-                  "broad_names": BROAD_NAMES,
+                  "structure": structure(total[:, :32], times, len(mix)/SR), "broad_names": BROAD_NAMES,
                   "broad_pct": fraction(broad.mean(axis=0), full.mean()),
                   "mid_spectrum": 10*np.log10(np.maximum(mid[:, :32].mean(axis=0), FLOOR)),
                   "side_spectrum": 10*np.log10(np.maximum(side[:, :32].mean(axis=0), FLOOR)),

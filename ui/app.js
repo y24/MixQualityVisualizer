@@ -165,6 +165,40 @@ $('range-apply').onclick=()=>{
 };
 $('range-reset').onclick=()=>{if(state.target){delete state.ranges[state.target.id];renderDashboard();}};
 
+function structureTrack(){return [state.target,...state.references].find(r=>r?.id===$('structure-track').value);}
+function structureSegment(){return structureTrack()?.structure?.segments[Number($('structure-segment').value)];}
+$('structure-track').onchange=()=>renderStructure(true);
+$('structure-panel').ontoggle=()=>{if($('structure-panel').open)renderStructure();};
+$('structure-apply').onclick=()=>{
+  const track=structureTrack(),segment=structureSegment();if(!track||!segment)return;
+  state.ranges[track.id]=[segment.start,segment.end];state.event=null;render();
+  notice(`${track.name} の比較区間を ${segment.start.toFixed(2)}–${segment.end.toFixed(2)} 秒に設定しました。`);
+};
+$('structure-listen').onclick=()=>{const segment=structureSegment();if(segment)seekTrack(structureTrack(),segment.start);};
+function renderStructure(reset=false){
+  const selected=$('structure-track').value, previous=$('structure-segment').value;
+  const tracks=[state.target,...state.references].filter(Boolean);
+  $('structure-track').replaceChildren();
+  for(const r of tracks){const option=text('option',`${r===state.target?'対象':'REF'} · ${r.name}`);option.value=r.id;$('structure-track').append(option);}
+  if(tracks.some(r=>r.id===selected))$('structure-track').value=selected;
+  const track=structureTrack(),data=track?.structure;
+  $('structure-segment').replaceChildren();
+  for(const [i,segment] of (data?.segments||[]).entries()){
+    const option=text('option',`${i+1} · ${duration(segment.start)}–${duration(segment.end)} (${segment.start.toFixed(1)}–${segment.end.toFixed(1)} 秒)`);option.value=i;$('structure-segment').append(option);
+  }
+  if(!reset&&previous!==''&&Number(previous)<(data?.segments.length||0))$('structure-segment').value=previous;
+  const available=!!data?.segments.length;
+  for(const id of ['structure-segment','structure-apply','structure-listen'])$(id).disabled=!available;
+  $('structure-status').textContent=!data?'候補データがありません。再解析すると表示されます。':data.status==='insufficient'?'8秒未満のため判定対象外です。':`${data.boundaries.length} 件の変化点候補 · 選択中の比較区間 ${range(track)[0].toFixed(1)}–${range(track)[1].toFixed(1)} 秒${data.boundaries.length?'':' · 明確な変化点を検出しませんでした'}`;
+  if(!$('structure-panel').open)return;
+  const chart=surface('structure-chart'),{ctx,w,h}=chart;
+  if(!data){blank(chart,'候補データなし');return;}
+  ctx.strokeStyle='#76c6bb';ctx.beginPath();
+  data.times.forEach((t,i)=>{const x=35+t/track.duration*(w-45),y=h-25-data.novelty[i]*(h-40);if(i)ctx.lineTo(x,y);else ctx.moveTo(x,y);});ctx.stroke();
+  ctx.fillStyle='#8996a5';ctx.fillText('1',10,15);ctx.fillText('0',10,h-25);ctx.fillText('0:00',35,h-5);ctx.textAlign='right';ctx.fillText(duration(track.duration),w-10,h-5);
+  ctx.strokeStyle='#f1ba73';for(const boundary of data.boundaries){const x=35+boundary.time/track.duration*(w-45);ctx.beginPath();ctx.moveTo(x,15);ctx.lineTo(x,h-25);ctx.stroke();}
+}
+
 function renderTracks() {
   $('target-list').replaceChildren();$('reference-list').replaceChildren();
   if(state.target){
@@ -195,6 +229,7 @@ function renderDashboard() {
   $('track-meta').textContent=`${duration(r.duration)}  /  ${(r.metadata.source_sample_rate/1000).toFixed(1)} kHz  /  ${r.metadata.source_channels===1?'MONO':'STEREO'}  /  ${number(r.loudness_lufs)} LUFS  /  ${r.model||'入力音源'}${r.device?' · '+(r.device_label||r.device.toUpperCase())+'で分離':''}${r.cached?' / 保存済み解析':r.separation_cached?' / 保存済み分離ステム':''}`;
   $('range-start').value=range(r)[0].toFixed(2);$('range-end').value=range(r)[1].toFixed(2);$('range-end').max=r.duration;
   renderVocalEditor(r);
+  renderStructure();
   $('cards').replaceChildren();
   for(const [key,label,unit,note] of v.cards){
     const value=stat(r,key),reference=refStat(key),card=text('div','','card');card.append(text('div',label,'card-label'));
