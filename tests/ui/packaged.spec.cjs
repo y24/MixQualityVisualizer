@@ -27,6 +27,9 @@ test('bundled executable analyzes and separates without external Python or uv',a
     await expect(page.locator('#progress-panel')).toBeHidden();
     await page.getByRole('button',{name:'ドラム',exact:true}).click();
     await expect(page.locator('#rhythm-panel')).toBeVisible();
+    await page.locator('#structure-panel summary').click();
+    await expect(page.locator('#structure-status')).toContainText('変化点');
+    await expect(page.locator('#structure-apply')).toBeEnabled();
     const fixture=path.join(root,'.data/smoke/separation-smoke.wav');
     await app.evaluate(({dialog},file)=>{dialog.showOpenDialog=async()=>({canceled:false,filePaths:[file]});},fixture);
     for(const device of ['cpu','cuda:0']){
