@@ -13,7 +13,7 @@ def runtime_info():
                 devices.append({"id": f"cuda:{index}", "name": properties.name,
                                 "memory_gb": round(properties.total_memory / 1024**3, 1)})
         elif torch.version.cuda is None:
-            reason = "CPU専用のPyTorchです。setup-cuda.ps1でCUDA版を導入できます。"
+            reason = "CPU専用のPyTorchです。「解析環境」からNVIDIA GPU版をセットアップできます。"
         else:
             reason = "CUDA対応GPUを利用できません。NVIDIAドライバーとGPUの状態を確認してください。"
     except Exception as exc:

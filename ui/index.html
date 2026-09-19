@@ -16,11 +16,22 @@
     <div class="section-label reference-label">リファレンス <button id="add-reference" class="icon" title="リファレンスを追加" aria-label="リファレンスを追加">＋</button></div>
     <div id="reference-list" class="track-list"><p class="quiet">目標の音を並べて比較</p></div>
     <button id="history" class="secondary full">保存済みの解析を開く</button>
-    <div class="sidebar-bottom"><span class="status-dot"></span> LOCAL AUDIO ONLY<p id="engine-status">解析エンジンを確認中…</p><button id="demo" class="text-button">合成デモで試す →</button></div>
+    <div class="sidebar-bottom"><span class="status-dot"></span> LOCAL AUDIO ONLY<p id="engine-status">解析エンジンを確認中…</p><button id="engine-manage" class="text-button">解析環境</button><button id="demo" class="text-button">合成デモで試す →</button></div>
   </aside>
   <main>
     <header><div><div class="eyebrow">MIX ANALYSIS / WORKSPACE</div><h1 id="track-title">音の関係を、見える形に。</h1><p id="track-meta">ボーカル、リズム、帯域、音像。リファレンスと聴き比べるための地図。</p></div><button id="export" class="secondary" disabled>解析をエクスポート ↗</button></header>
     <div id="notice" class="notice" role="status" hidden></div>
+    <section id="engine-setup" class="panel" hidden aria-label="初回セットアップ">
+      <h2>解析環境のセットアップ</h2>
+      <p>Python 3.13（64-bit）または uv を用意してください。専用環境を作り、PyTorch公式・PyPIからライブラリを取得します。uvのみの場合はPythonも取得します。分離モデルは初回分離時に自動取得します。</p>
+      <p><label>処理環境 <select id="engine-variant"><option value="cpu">CPU（ダウンロード容量が少ない）</option><option value="cu128">NVIDIA GPU / CUDA 12.8（数GB・対応ドライバーが必要）</option></select></label>
+      <label>セットアップ方法 <select id="engine-manager"><option value="auto">自動（uv優先）</option><option value="python">Python + pip</option><option value="uv">uv</option></select></label></p>
+      <p id="engine-setup-message" role="status"></p>
+      <progress id="engine-download-progress" max="100" value="0"></progress>
+      <button id="engine-install" class="primary">専用環境を作成</button>
+      <button id="engine-select" class="secondary">準備済みの python.exe を指定</button>
+      <button id="engine-close" class="text-button">閉じる</button>
+    </section>
     <div id="progress-panel" class="progress-panel" hidden><div><span class="spinner"></span><strong id="progress-message">準備中</strong><button id="cancel" class="text-button">キャンセル</button></div><progress id="progress" max="100" value="0"></progress></div>
     <nav id="tabs" aria-label="分析項目">
       <button data-tab="overview" class="active">概要</button><button data-tab="vocals">ボーカル</button><button data-tab="drums">ドラム</button><button data-tab="bass">ベース・低域</button><button data-tab="spatial">M/S・音像</button><button data-tab="density">密集度・競合</button>

@@ -4,8 +4,10 @@ const path = require('node:path');
 const fs = require('node:fs');
 const { pathToFileURL } = require('node:url');
 const { randomUUID } = require('node:crypto');
+const { Engine } = require('./engine.cjs');
 
 const ROOT = path.resolve(__dirname, '..');
+const engine = new Engine(ROOT, process.env.MQV_TEST_PROFILE==='1' ? path.join(ROOT,'.cache','engines') : path.join(app.getPath('appData'), 'MixAtlas', 'engines'));
 const ANALYSIS_VERSION = JSON.parse(fs.readFileSync(path.join(ROOT,'analysis-version.json'),'utf8')).version;
 const PROFILE = process.env.MQV_TEST_PROFILE==='1' ? path.join(ROOT,'.cache','ui-test-profile') : path.join(ROOT,'.data');
 app.setPath('userData', path.join(PROFILE, 'desktop'));
@@ -18,16 +20,16 @@ if (!app.requestSingleInstanceLock()) app.quit();
 app.on('second-instance', () => { if(win){if(win.isMinimized())win.restore();win.focus();} });
 
 function worker(request, notify) {
-  const bundledPython = path.join(ROOT, '..', 'python', 'python.exe');
-  const python = process.env.MQV_PYTHON || (fs.existsSync(bundledPython) ? bundledPython : path.join(ROOT, '.venv', 'Scripts', 'python.exe'));
-  const child = spawn(python, ['-u', '-m', 'backend.worker'], {
+  if(engine.status().busy) throw new Error('解析環境のセットアップが完了するまでお待ちください。');
+  if (!engine.status().ready) throw new Error('先に解析エンジンの初回セットアップを完了してください。');
+  const child = spawn(engine.python, ['-I', '-u', '-X', 'faulthandler', '-c', 'import sys,runpy; sys.path.insert(0,sys.argv[1]); runpy.run_module("backend.worker",run_name="__main__")', ROOT], {
     cwd: ROOT, windowsHide: true,
     env: { ...process.env, PYTHONUTF8: '1', TORCH_HOME: path.join(ROOT, '.data', 'models') },
     stdio: ['pipe', 'pipe', 'pipe'],
   });
   let buffer = '', stderr = '', result, failure;
   const promise = new Promise((resolve, reject) => {
-    child.on('error', e => reject(new Error(`解析エンジンを起動できません。配布版はresources/pythonを含むフォルダー全体を配置してください。ソース版はsetup.ps1を実行してください。${e.message}`)));
+    child.on('error', e => reject(new Error(`解析エンジンを起動できません。「解析環境」からPython環境を設定し直してください。${e.message}`)));
     child.stdout.setEncoding('utf8');
     child.stderr.setEncoding('utf8');
     child.stderr.on('data', text => { stderr = (stderr + text).slice(-12000); });
@@ -45,7 +47,7 @@ function worker(request, notify) {
     });
     child.on('close', code => {
       if (result && code === 0) resolve(result);
-      else reject(new Error(failure || (child.killed ? '解析をキャンセルしました。' : `解析に失敗しました。${stderr.slice(-1800)}`)));
+      else reject(new Error(failure || (child.killed ? '解析をキャンセルしました。' : `解析に失敗しました（終了コード: ${code}）。${stderr.slice(-1800)}`)));
     });
     child.stdin.on('error', () => {});
     child.stdin.end(JSON.stringify(request)+'\n');
@@ -74,7 +76,7 @@ app.whenReady().then(() => {
     if (!filename) return new Response('Not found', { status: 404 });
     return net.fetch(pathToFileURL(filename).toString(), { headers: request.headers });
   });
-  // Renderer has no network access and no Node. Python only downloads model weights.
+  // Renderer has no network access. Package managers and Python fetch dependencies/models.
   session.defaultSession.webRequest.onBeforeRequest((details, cb) => {
     cb({ cancel: /^https?:/i.test(details.url) });
   });
@@ -87,6 +89,19 @@ app.whenReady().then(() => {
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   win.webContents.on('will-navigate', e => e.preventDefault());
   const trusted = e => { if (e.sender !== win.webContents || e.senderFrame !== win.webContents.mainFrame) throw new Error('Forbidden'); };
+  ipcMain.handle('engine-status', e => { trusted(e); return engine.status(); });
+  ipcMain.handle('engine-install', (e, options) => {
+    trusted(e);
+    if(activeJob) throw new Error('解析の完了後に設定してください。');
+    return engine.install(message => { if(!win.isDestroyed()) win.webContents.send('engine-progress', message); }, options);
+  });
+  ipcMain.handle('engine-select', async e => {
+    trusted(e);
+    if(activeJob) throw new Error('解析の完了後に設定してください。');
+    const selected=await dialog.showOpenDialog(win,{title:'準備済みの環境の python.exe を選択',properties:['openFile'],filters:[{name:'Python',extensions:['exe']}]});
+    if(selected.canceled || !selected.filePaths.length) return null;
+    return engine.usePython(selected.filePaths[0]);
+  });
   ipcMain.handle('choose-audio', async (e, multiple=false) => {
     trusted(e);
     const selected = await dialog.showOpenDialog(win, { title: '音源を選択', properties: ['openFile', ...(multiple ? ['multiSelections'] : [])], filters: [{ name: 'Audio', extensions: ['wav','flac','mp3'] }] });

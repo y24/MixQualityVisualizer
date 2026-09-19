@@ -55,6 +55,9 @@ def bundle(destination):
             source=Path(distribution.locate_file(entry)).resolve()
             if not source.is_relative_to(site):continue  # Console entry points not used.
             if source.suffix=='.pyc' or '__pycache__' in source.parts:continue
+            # The application uses precompiled operators, never C++ extensions.
+            legal_notice = any(word in source.name.lower() for word in ('license', 'licence', 'copying', 'notice', 'authors'))
+            if not legal_notice and (source.suffix in ('.lib', '.pdb') or 'include' in source.relative_to(site).parts):continue
             if not source.is_file():raise FileNotFoundError(source)
             relative=source.relative_to(site)
             if relative in copied:continue

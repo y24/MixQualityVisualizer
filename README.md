@@ -24,23 +24,25 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\setup.ps1
 
 `setup.ps1`は、このフォルダー内の`.venv`へPython依存関係を、`node_modules`へElectronをインストールします。Pythonは`requirements-lock.txt`、Nodeは`package-lock.json`に固定したバージョンを使用します。PythonやNodeのグローバル環境は変更しません。
 
-ソース版の開発にはPythonとNode.jsを使います。配布版にはPythonと解析ライブラリを同梱するため、利用者側のPython・uv・Node.jsは不要です。
+ソース版の開発にはPythonとNode.jsを使います。配布版はPython・解析ライブラリを同梱しません。利用者側にはPython 3.13 x64（pip/venv付き）またはuvが必要です。Node.jsは不要です。
 
-## Python同梱 Windows版
+## Windows配布版
 
-```powershell
-npm.cmd run build:windows
-```
+`npm run build:windows` で、アプリ本体・Electron・合成デモのみを含むフォルダーと配布ZIPを生成します。
+初回起動時に「専用環境を作成」を選ぶと、CPU版またはCUDA 12.8版を選んで準備できます。
+uvがあれば優先し、なければPython/pipを使います。uvのみの場合はPython 3.13も取得します。
+PyTorch/torchaudioは公式PyTorch配布元、その他のライブラリはPyPIから利用者のPCへ直接取得します。
+専用環境は `%APPDATA%/MixAtlas/engines/venv-...` に作り、既存のPythonへはインストールしません。
+実行用依存関係は `requirements-runtime.txt` に固定し、開発用pytestなどは導入しません。
 
-`dist/MixAtlas-<解析バージョン>-<日時>/`に、`MixAtlas.exe`、Electron、CPython 3.13.3の埋め込み用ランタイム、固定バージョンの解析ライブラリを生成します。配布先では書き込み可能な場所へ**フォルダー全体**を配置してMixAtlas.exeを起動するだけです。Setupやuv、システムのPythonは使いません。
+準備済みの環境は「準備済みの python.exe を指定」で選べます。バージョンと主要ライブラリの起動を確認し、成功後に選択を保存します。
+「解析環境」から再設定できます。Python/uvを導入した直後はアプリを再起動してください。
+分離モデルは初回分離時に公式配布先から取得します。GPUドライバーは必要に応じて利用者が用意します。
+CUDA ToolkitやcuDNNの個別導入は不要です。取得後はオフラインで解析できます。
 
-ビルド時に公式PythonのZIP（約11 MB）を取得し、固定SHA-256を照合します。ライブラリは開発環境の`requirements-lock.txt`に一致する配布メタデータから収集し、ライセンスも含めて同梱します。現在の環境からのビルドはCUDA 12.8対応PyTorchを含み、CPU/GPUを選択できます。CUDAライブラリを含むため、展開後は数GBの容量が必要です。GPU利用には対応するNVIDIAドライバーが必要です。
-
-音源分離モデルは初回の分離時にダウンロードします。作業環境のユーザー音源・解析履歴・分離ステム・モデルは配布しません。自作の合成デモのみを同梱します。`resources/python/runtime-manifest.json`に同梱パッケージを記録します。配布版は相対パスの隔離されたPython検索パスを使い、システムPythonへ依存しません。
-
-外部Pythonの指定を外し、PATHをWindowsシステムディレクトリだけにした環境で、EXE起動・DSP解析・CPU/CUDA実分離を検証しています。別のクリーンPCでのドライバーやWindows環境差の検証は別途必要です。単体EXEやインストーラー形式ではないため、resourcesやDLLを含むフォルダー全体を保持してください。
-
-配布方式の資料：[Electronの手動パッケージ手順](https://www.electronjs.org/docs/latest/tutorial/application-distribution)、[Pythonの埋め込み用配布](https://docs.python.org/3.13/using/windows.html#the-embeddable-package)。
+配布にはフォルダー全体を使い、ElectronのLICENSEとLICENSES.chromium.htmlを保持してください。
+Python/解析エンジンZIPをGitHub Releasesへアップロードする方式は廃止しました。
+旧ビルドはdistに残っていますが、配布には最新の `.cache/last-windows-build.json` が指すZIPを使ってください。
 
 ## 使い方
 
@@ -214,3 +216,10 @@ npm.cmd run test:helpers # 歌唱区間・拍グリッドの検証
 既存のERB 32帯域パワーを0.5秒ごとに平均し、平方根スペクトル比率を特徴量にします。前後4秒の特徴平均の差の二乗和÷2を変化指標とし、0.12以上・突出度0.08以上・8秒以上の間隔で候補を採用します。自己類似度に箱形チェッカーボードを適用する考え方を、局所平均の差で直接計算するため、曲全体の二乗サイズの行列は作りません。参考：[AudioLabsのnoveltyによる区間分割](https://www.audiolabs-erlangen.de/resources/MIR/FMP/C4/C4S4_NoveltySegmentation.html)。
 
 無音は零ベクトルとし、曲内最大パワーから−60 dB以下または1e-12以下を対象外にします。音量だけの変化は検出せず、サビ等の名称・小節・繰り返し・曲間対応は判定しません。冒頭・末尾4秒は判定せず、8秒未満は対象外です。指標値は正解確率ではなく、閾値も実曲の聴感評価前の暫定値です。既存の音量・競合・トランジェント指標の算出条件は変更していません。
+
+### 配布版の検証とアップロード
+
+`node --test tests/engine.test.cjs` で、専用環境へのインストール・失敗時の再試行・既存環境選択を検証します。
+`MQV_PACKAGED_TEST=1` で `npx playwright test tests/ui/packaged.spec.cjs` を実行すると、Pythonを含まない実際の配布EXEで外部環境選択とCPU/GPU解析を確認します。
+GitHub CLI認証後、`./scripts/publish_windows.ps1` は最新のアプリZIPのみを下書きReleaseへアップロードします。
+[旧再配布方式の確認記録](packaging/REDISTRIBUTION_REVIEW.md)は旧エンジンZIPの記録です。現行ビルドには該当するPythonパッケージを含めません。

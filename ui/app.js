@@ -442,5 +442,43 @@ $('listen-track').onchange=updateSources;$('listen-source').onchange=()=>changeA
 function seekTrack(track,time){if(!track)return;if(currentListen()?.id!==track.id){$('listen-track').value=track.id;updateSources();$('audio').onloadedmetadata=()=>{$('audio').currentTime=time;};}else $('audio').currentTime=time;}
 function seek(time){seekTrack(state.target,time);}
 new ResizeObserver(()=>{if(state.target)renderDashboard();}).observe(document.querySelector('main'));
-if(api)api.health().then(displayHardware).catch(e=>{$('engine-status').textContent='環境のセットアップが必要です';notice(e.message);});
+async function initializeEngine(){
+  const controls=['add-target','add-reference','empty-import','demo'];
+  const lock=disabled=>controls.forEach(id=>{$(id).disabled=disabled;});
+  lock(true);
+  try{
+    const status=await api.engineStatus();
+    if(!status.ready){
+      $('engine-setup').hidden=false;
+      $('engine-status').textContent='解析環境の設定が必要です';
+      $('engine-setup-message').textContent='必要なライブラリは公式配布元から取得します。既存のPython環境にはインストールしません。';
+      return;
+    }
+    displayHardware(await api.health());
+    $('engine-setup').hidden=true;
+    lock(false);
+  }catch(e){$('engine-status').textContent='環境のセットアップが必要です';$('engine-setup').hidden=false;$('engine-setup-message').textContent=e.message;notice(e.message);}
+}
+if(api){
+  api.onEngineProgress(message=>{
+    if(message.message)$('engine-setup-message').textContent=message.message;
+    $('engine-download-progress').removeAttribute('value');
+  });
+  const setupBusy=busy=>['engine-install','engine-select','engine-variant','engine-manager','engine-close'].forEach(id=>{$(id).disabled=busy;});
+  $('engine-install').onclick=async()=>{
+    setupBusy(true);
+    try{await api.installEngine({variant:$('engine-variant').value,manager:$('engine-manager').value});await initializeEngine();}
+    catch(e){$('engine-setup-message').textContent=e.message;$('engine-install').textContent='再試行';}
+    finally{setupBusy(false);$('engine-download-progress').value=0;}
+  };
+  $('engine-select').onclick=async()=>{
+    setupBusy(true);
+    try{if(await api.selectEngine())await initializeEngine();}
+    catch(e){$('engine-setup-message').textContent=e.message;}
+    finally{setupBusy(false);}
+  };
+  $('engine-manage').onclick=async()=>{$('engine-setup').hidden=false;const status=await api.engineStatus();$('engine-setup-message').textContent=status.python?`使用中: ${status.python}`:'Python 3.13 または uv を準備してセットアップしてください。';};
+  $('engine-close').onclick=()=>{$('engine-setup').hidden=true;};
+  initializeEngine();
+}
 else{$('engine-status').textContent='Electronから起動してください';notice('npm start でデスクトップアプリを起動してください。');}
