@@ -15,7 +15,7 @@
     <div id="target-list" class="track-list"><p class="quiet">ミックスを選択してください</p></div>
     <div class="section-label reference-label">リファレンス <button id="add-reference" class="icon" title="リファレンスを追加" aria-label="リファレンスを追加">＋</button></div>
     <div id="reference-list" class="track-list"><p class="quiet">目標の音を並べて比較</p></div>
-    <button id="history" class="secondary full">保存済みの解析を開く</button>
+    <button id="history" class="secondary full">ライブラリ</button>
     <div class="sidebar-bottom"><p id="engine-status">解析エンジンを確認中…</p><button id="engine-manage" class="text-button">解析環境</button><button id="demo" class="text-button">合成デモで試す →</button></div>
   </aside>
   <main>
@@ -79,7 +79,11 @@
     <div id="stem-fields" hidden></div><p id="import-error" class="error" role="alert"></p>
     <div class="dialog-actions"><button id="import-close" type="button" class="secondary">閉じる</button><button id="import-submit" type="submit" class="primary">解析を開始 →</button></div>
   </form></dialog>
-  <dialog id="history-dialog"><div class="dialog-heading"><h2>保存済みの解析</h2></div><div id="history-items"></div><div class="dialog-actions"><button id="history-close" class="secondary">閉じる</button></div></dialog>
+  <dialog id="history-dialog" aria-labelledby="library-title"><div class="dialog-heading"><h2 id="library-title">ライブラリ</h2><p class="subtle">解析済みの音源を再利用できます。数値は曲全体・400 ms窓の中央値（声は自動検出区間）。— は未測定です。</p></div>
+    <label class="library-search">音源を検索 <input id="library-search" type="search" placeholder="ファイル名・パスで検索"></label><div class="library-toolbar"><p id="library-count" class="subtle"></p><span id="library-selected" class="subtle"></span><button id="library-delete" class="secondary small" disabled>選択した曲を削除</button><span class="subtle">ライブラリの登録のみ削除（元音源は保持）</span></div>
+    <p id="library-error" class="error" role="status"></p><div class="library-scroll"><table class="library-table"><thead><tr><th scope="col" class="library-check"><input id="library-select-all" type="checkbox" aria-label="表示中の曲をすべて選択"></th><th scope="col">再生</th><th scope="col" aria-sort="none"><button class="library-sort" data-sort="name">ファイル名 / パス<span aria-hidden="true"> ↕</span></button></th><th scope="col" aria-sort="none"><button class="library-sort" data-sort="duration">長さ<span aria-hidden="true"> ↕</span></button></th><th scope="col" aria-sort="none"><button class="library-sort" data-sort="vocals_db">声と伴奏<br>バランス (dB)<span aria-hidden="true"> ↕</span></button></th><th scope="col" aria-sort="none"><button class="library-sort" data-sort="drums_db">ドラム<br>相対音量 (dB)<span aria-hidden="true"> ↕</span></button></th><th scope="col" aria-sort="none"><button class="library-sort" data-sort="low_pct">低域比率<br>(%)<span aria-hidden="true"> ↕</span></button></th><th scope="col" aria-sort="none"><button class="library-sort" data-sort="side_pct">Side比率<br>(%)<span aria-hidden="true"> ↕</span></button></th><th scope="col">解析方法 / 状態</th><th scope="col">追加先</th></tr></thead><tbody id="history-items"></tbody></table></div>
+    <div class="library-preview"><span id="library-playing" class="subtle">▶ で試聴</span><audio id="library-audio" controls preload="none"></audio></div>
+    <div class="dialog-actions"><button id="history-close" class="secondary">閉じる</button></div></dialog>
   <script src="envelopes.js"></script><script src="rhythm.js"></script><script src="vocal-ranges.js"></script><script src="app.js"></script>
 </body>
 </html>

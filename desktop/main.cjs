@@ -5,6 +5,7 @@ const fs = require('node:fs');
 const { pathToFileURL } = require('node:url');
 const { randomUUID } = require('node:crypto');
 const { Engine } = require('./engine.cjs');
+const { Library } = require('./library.cjs');
 
 const ROOT = path.resolve(__dirname, '..');
 const engine = new Engine(ROOT, process.env.MQV_TEST_PROFILE==='1' ? path.join(ROOT,'.cache','engines') : path.join(app.getPath('appData'), 'MixAtlas', 'engines'));
@@ -15,7 +16,7 @@ app.setPath('sessionData', path.join(PROFILE, 'session'));
 protocol.registerSchemesAsPrivileged([{ scheme: 'mqv', privileges: { standard: true, secure: true, stream: true, supportFetchAPI: true } }]);
 const allowed = new Set();
 const media = new Map();
-let win, activeJob;
+let win, activeJob, library;
 if (!app.requestSingleInstanceLock()) app.quit();
 app.on('second-instance', () => { if(win){if(win.isMinimized())win.restore();win.focus();} });
 
@@ -62,6 +63,7 @@ function exposeResult(result) {
     const resolved = path.resolve(filename);
     const root = path.join(ROOT, '.data', 'analyses') + path.sep;
     if (!resolved.startsWith(root)) throw new Error('不正なキャッシュパスです。');
+    if (!fs.existsSync(resolved)) throw new Error('試聴キャッシュが見つかりません。元の音源を再解析してください。');
     const token = randomUUID(); media.set(token, resolved);
     result.media[key] = `mqv://audio/${token}`;
   }
@@ -70,6 +72,8 @@ function exposeResult(result) {
 }
 
 app.whenReady().then(() => {
+  library = new Library(path.join(PROFILE, 'library.sqlite'));
+  library.importCaches(path.join(ROOT, '.data', 'analyses'));
   protocol.handle('mqv', request => {
     const url = new URL(request.url);
     const filename = url.hostname === 'audio' && media.get(url.pathname.slice(1));
@@ -113,26 +117,21 @@ app.whenReady().then(() => {
     if (!request || !allowed.has(request.path) || Object.values(request.stems || {}).some(p => !allowed.has(p))) throw new Error('選択済みの音源を指定してください。');
     const job = worker(request, msg => { if (!win.isDestroyed()) win.webContents.send('progress', msg); });
     activeJob = job;
-    try { return exposeResult(await job.promise); }
+    try { const result = await job.promise; library.save(result); return exposeResult(result); }
     finally { if (activeJob === job) activeJob = null; }
   });
   ipcMain.handle('cancel', e => { trusted(e); activeJob?.child.kill(); });
   ipcMain.handle('health', async e => { trusted(e); return worker({ action: 'health' }).promise; });
   ipcMain.handle('history', async e => {
     trusted(e);
-    const directory = path.join(ROOT, '.data', 'analyses');
-    if (!fs.existsSync(directory)) return [];
-    return fs.readdirSync(directory).flatMap(id => {
-      try { const r = JSON.parse(fs.readFileSync(path.join(directory,id,'result.json'),'utf8')); return r.version===ANALYSIS_VERSION ? [{id:r.id,name:r.name,duration:r.duration,mode:r.mode}] : []; }
-      catch { return []; }
-    });
+    return library.list(ANALYSIS_VERSION);
   });
   ipcMain.handle('load-history', async (e, id) => {
     trusted(e);
-    if (!/^[a-f0-9]{24}$/.test(id)) throw new Error('Invalid id');
-    const r = JSON.parse(fs.readFileSync(path.join(ROOT,'.data','analyses',id,'result.json'),'utf8'));
+    const r = library.load(id);
     return exposeResult({...r,cached:true});
   });
+  ipcMain.handle('remove-history', (e, ids) => { trusted(e); return library.remove(ids); });
   ipcMain.handle('export', async (e, payload) => {
     trusted(e);
     const chosen = await dialog.showSaveDialog(win, { defaultPath: 'mix-analysis.json', filters: [{name:'JSON',extensions:['json']}] });
@@ -152,3 +151,4 @@ app.whenReady().then(() => {
   win.loadFile(path.join(ROOT, 'ui', 'index.html'));
 });
 app.on('window-all-closed', () => { activeJob?.child.kill(); app.quit(); });
+app.on('will-quit', () => library?.close());
