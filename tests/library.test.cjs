@@ -43,7 +43,17 @@ test('library persists results, preserves source aliases, migrates idempotently 
     // Explicitly analyzing again restores the registration.
     library.save(r);assert.equal(library.list(7).length, 1);
     const restored=library.list(7)[0];
-    assert.equal(library.prepareAnalysis(restored.id).source, null);
+    const snapshot={selected:r.id,tab:'references',workspaces:[{track:{id:r.id,source:r.source},references:[],ranges:{[r.id]:[2,8]}}]};
+    library.saveSession(snapshot);
+    library.remove([restored.id]);
+    library.close();library=new Library(filename);
+    assert.deepEqual(library.loadSession().snapshot,snapshot);
+    assert.equal(library.loadSession().results[0].id,r.id);
+    assert.throws(()=>library.saveSession({workspaces:[{track:{id:'missing',source:'missing'},references:[]}]}));
+    assert.deepEqual(library.loadSession().snapshot,snapshot);
+    library.save(r);
+    const restoredAgain=library.list(7)[0];
+    assert.equal(library.prepareAnalysis(restoredAgain.id).source, null);
     const source=path.join(cache,'result.json');
     library.save({...r,source,mode:'stems',analysis_request:{device:'cpu',stems:{vocals:source,drums:'missing.wav'}}});
     const prepared=library.prepareAnalysis(library.list(7).find(x=>x.source===source).id);

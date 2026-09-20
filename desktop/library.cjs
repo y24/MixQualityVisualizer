@@ -18,6 +18,10 @@ class Library {
       );
       CREATE TABLE IF NOT EXISTS removed_tracks (
         analysis_id TEXT NOT NULL, source TEXT NOT NULL, PRIMARY KEY(analysis_id,source)
+      );
+      CREATE TABLE IF NOT EXISTS workspace_session (id INTEGER PRIMARY KEY CHECK(id=1), snapshot TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS workspace_results (
+        analysis_id TEXT NOT NULL, source TEXT NOT NULL, result TEXT NOT NULL, PRIMARY KEY(analysis_id,source)
       );`);
   }
   save(result, importing = false) {
@@ -88,5 +92,29 @@ class Library {
       device:saved.device || result.requested_device || 'auto', stems };
   }
   close() { this.db.close(); }
+  saveSession(snapshot) {
+    if (!snapshot || !Array.isArray(snapshot.workspaces)) throw new Error('Invalid workspace session');
+    const tracks = snapshot.workspaces.flatMap(w => [w.track, ...w.references]);
+    if (tracks.some(t => !t || typeof t.id !== 'string' || typeof t.source !== 'string')) throw new Error('Invalid workspace track');
+    this.db.exec('BEGIN IMMEDIATE');
+    try {
+      const copy = this.db.prepare('INSERT OR IGNORE INTO workspace_results SELECT analysis_id,source,result FROM tracks WHERE analysis_id=? AND source=?');
+      const exists = this.db.prepare('SELECT 1 FROM workspace_results WHERE analysis_id=? AND source=?');
+      for (const track of tracks) {
+        copy.run(track.id, path.resolve(track.source));
+        if (!exists.get(track.id, path.resolve(track.source))) throw new Error('保存するワークスペースの解析結果が見つかりません。');
+      }
+      this.db.prepare('INSERT OR REPLACE INTO workspace_session(id,snapshot) VALUES (1,?)').run(JSON.stringify(snapshot));
+      const keep = new Set(tracks.map(t => JSON.stringify([t.id,path.resolve(t.source)])));
+      for (const row of this.db.prepare('SELECT analysis_id,source FROM workspace_results').all()) {
+        if (!keep.has(JSON.stringify([row.analysis_id,row.source]))) this.db.prepare('DELETE FROM workspace_results WHERE analysis_id=? AND source=?').run(row.analysis_id,row.source);
+      }
+      this.db.exec('COMMIT');
+    } catch(error) { this.db.exec('ROLLBACK'); throw error; }
+  }
+  loadSession() {
+    const row = this.db.prepare('SELECT snapshot FROM workspace_session WHERE id=1').get();
+    return {snapshot:row ? JSON.parse(row.snapshot) : null, results:this.db.prepare('SELECT result FROM workspace_results').all().map(r=>JSON.parse(r.result))};
+  }
 }
 module.exports = { Library };

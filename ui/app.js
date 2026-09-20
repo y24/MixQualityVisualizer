@@ -2,6 +2,50 @@
 const $ = id => document.getElementById(id);
 const api = window.mixApp;
 const state = { target:null, targets:[], references:[], tab:'overview', ranges:{}, busy:false, role:'target', pending:null, stems:{}, event:null, hardware:null, vocalRanges:{}, vocalModes:{}, rhythmSettings:{} };
+// Reference membership and comparison ranges belong to the selected workspace.
+const workspaceSettings=new Map();
+function workspaceFor(id=state.target?.id){
+  if(!id)return null;
+  if(!workspaceSettings.has(id))workspaceSettings.set(id,{references:[],ranges:{}});
+  return workspaceSettings.get(id);
+}
+Object.defineProperties(state,{
+  references:{get:()=>workspaceFor()?.references||[],set:value=>{const workspace=workspaceFor();if(workspace)workspace.references=value;}},
+  ranges:{get:()=>workspaceFor()?.ranges||{},set:value=>{const workspace=workspaceFor();if(workspace)workspace.ranges=value;}}
+});
+let sessionReady=false, lastSession='', sessionSave=Promise.resolve();
+function sessionSnapshot(){
+  const identity=r=>({id:r.id,source:r.source});
+  return {selected:state.target?.id||null,tab:state.tab,workspaces:state.targets.map(track=>({track:identity(track),references:workspaceFor(track.id).references.map(identity),ranges:workspaceFor(track.id).ranges}))};
+}
+function persistSession(){
+  if(!sessionReady||!api)return;
+  const snapshot=sessionSnapshot(),encoded=JSON.stringify(snapshot);
+  if(encoded===lastSession)return;
+  lastSession=encoded;
+  sessionSave=sessionSave.then(()=>api.saveSession(JSON.parse(encoded))).catch(error=>{lastSession='';notice('ワークスペースを保存できませんでした：'+error.message);});
+}
+async function restoreSession(){
+  document.body.inert=true;
+  try {
+    const saved=await api.loadSession();
+    if(saved.snapshot){
+      const find=key=>saved.results.find(r=>r.id===key.id&&r.source===key.source);
+      for(const workspace of saved.snapshot.workspaces){
+        const track=find(workspace.track);if(!track)continue;
+        addResult(track,'target');
+        for(const key of workspace.references){const reference=find(key);if(reference)addResult(reference,'reference',track.id);}
+        workspaceFor(track.id).ranges=workspace.ranges||{};
+      }
+      state.target=state.targets.find(r=>r.id===saved.snapshot.selected)||state.targets[0]||null;
+      if([...document.querySelectorAll('#tabs button')].some(b=>b.dataset.tab===saved.snapshot.tab))state.tab=saved.snapshot.tab;
+      render();refreshPlayer();
+    }
+    if(saved.warnings.length)notice('復元できなかった音源があります。ライブラリで再解析してください。\n'+saved.warnings.join('\n'));
+    lastSession=JSON.stringify(sessionSnapshot());
+  }catch(error){notice('前回のワークスペースを読み込めませんでした：'+error.message);}
+  finally{sessionReady=true;document.body.inert=false;}
+}
 const names = {vocals:'ボーカル',drums:'ドラム',bass:'ベース',other:'その他'};
 const sourceNames = {mix:'元ステレオ',mid:'Midのみ',side:'Sideのみ',mono:'モノラル',...names};
 const number = (v,d=1) => typeof v==='number' && Number.isFinite(v) ? v.toFixed(d) : '—';
@@ -63,10 +107,11 @@ function stat(track,key) {
 }
 function refsFor(track) { return state.references.filter(r=>r.max_frequency===track.max_frequency&&r.version===track.version); }
 function refStat(key) { return median(refsFor(state.target).map(r=>stat(r,key))); }
-function setBusy(busy) { state.busy=busy;$('progress-panel').hidden=!busy;for(const id of ['add-target','add-reference','demo','empty-import','empty-library','history'])$(id).disabled=busy; }
+function setBusy(busy) { state.busy=busy;$('progress-panel').hidden=!busy;for(const id of ['add-target','add-reference','demo','empty-import','empty-library','history','reference-library'])$(id).disabled=busy; }
 api?.onProgress(msg=>{ const percent=Math.max(0,Math.min(100,Math.round(msg.percent)));$('progress').value=percent;$('progress-percent').textContent=`${percent}%`;$('progress-message').textContent=msg.message; });
 
-function addResult(result,role) {
+function addResult(result,role,workspaceId=state.target?.id) {
+  if(role==='reference'&&!state.targets.some(track=>track.id===workspaceId))throw new Error('追加先のワークスペースを選択してください。');
   if(!(result.id in state.rhythmSettings)){
     try{const saved=JSON.parse(localStorage.getItem('rhythm:'+result.id));if(saved)Rhythm.beats(result.transients?.rhythm,result.duration,saved);state.rhythmSettings[result.id]=saved;}catch{state.rhythmSettings[result.id]=null;}
   }
@@ -75,20 +120,27 @@ function addResult(result,role) {
     try { const saved=JSON.parse(localStorage.getItem('vocal-ranges:'+result.id));state.vocalRanges[result.id]=saved==null?null:VocalRanges.normalize(saved,result.duration); }
     catch { state.vocalRanges[result.id]=null; }
   }
-  if(role==='target') { state.target=result; if(!state.targets.some(r=>r.id===result.id))state.targets.push(result); }
-  else if(!state.references.some(r=>r.id===result.id)) state.references.push(result);
-  if(!state.target) {state.target=result;state.references=state.references.filter(r=>r.id!==result.id);}
-  if(state.target&&!state.targets.some(r=>r.id===state.target.id))state.targets.push(state.target);
+  if(role==='target') {
+    state.target=result;
+    const index=state.targets.findIndex(r=>r.id===result.id);
+    if(index<0)state.targets.push(result);else state.targets[index]=result;
+    workspaceFor(result.id);
+  } else {
+    const references=workspaceFor(workspaceId).references;
+    if(!references.some(r=>r.id===result.id))references.push(result);
+  }
   state.event=null;render();refreshPlayer();
 }
-async function analyze(request,role) {
+async function analyze(request,role,workspaceId=state.target?.id) {
   notice();setBusy(true);$('progress').value=0;$('progress-percent').textContent='0%';$('progress-message').textContent='解析を開始しています';
-  try {const result=await api.analyze(request);if(role==='library'){await $('history').onclick();}else addResult(result,role);}
+  try {const result=await api.analyze(request);if(role==='library'){await $('history').onclick();}else addResult(result,role,workspaceId);}
   catch(e) {notice(e.message);}
   finally {setBusy(false);if(role==='library'&&$('history-dialog').open)renderLibrary();}
 }
 function openImport(role) {
   if(state.busy)return;
+  if(role==='reference'&&!state.target)return;
+  state.importWorkspaceId=state.target?.id;
   state.role=role;state.pending=null;state.stems={};state.reanalysisId=null;
   $('import-title').textContent=role==='target'?'解析する音源':'リファレンスを追加';
   $('choose-mix').textContent='＋ ミックス音源を選択';$('import-error').textContent='';
@@ -131,16 +183,17 @@ $('import-form').onsubmit=e=>{
   if(!state.pending){$('import-error').textContent='ミックス音源を選んでください。';return;}
   if($('import-mode').value==='stems'&&Object.keys(state.stems).length!==4){$('import-error').textContent='4つのステムを指定してください。';return;}
   const request={libraryId:state.reanalysisId,path:state.pending.path,mode:$('import-mode').value,model:$('model').value,device:$('device').value,stems:Object.fromEntries(Object.entries(state.stems).map(([k,v])=>[k,v.path]))};
-  $('import-dialog').close();analyze(request,state.role);
+  $('import-dialog').close();analyze(request,state.role,state.importWorkspaceId);
 };
 $('cancel').onclick=()=>api.cancel();
 $('demo').onclick=async()=>{try{await analyze(await api.demo(),'target');}catch(e){notice(e.message);}};
+let libraryRole=null, libraryWorkspaceId=null;
 let libraryItems=[], libraryPlaying=null, libraryRequest=0, libraryDeleting=false;
 const librarySelected=new Set();
 let librarySort={key:null,direction:1};
 function visibleLibraryItems() {
   const query=$('library-search').value.trim().toLocaleLowerCase();
-  const items=libraryItems.filter(item=>`${item.name} ${item.source}`.toLocaleLowerCase().includes(query));
+  const items=libraryItems.filter(item=>(!$('library-compatible-only').checked||item.compatible)&&`${item.name} ${item.source}`.toLocaleLowerCase().includes(query));
   const {key,direction}=librarySort;
   if(key)items.sort((a,b)=>{
     const value=item=>key==='name'?item.name:key==='duration'?item.duration:item.summary[key]?.median;
@@ -192,7 +245,7 @@ function renderLibrary() {
     row.append(text('td',`${item.mode==='mix'?'元音源のみ':item.mode==='stems'?'入力ステム':'自動分離'}${!item.compatible?' / 旧版・再解析が必要':''}${!item.sourceExists?' / 元ファイルなし':''}`));
     const actions=text('td','','library-actions');
     if(!item.compatible){
-      const reanalyze=text('button','再解析','secondary small');reanalyze.disabled=state.busy;
+      const reanalyze=text('button','再解析','reanalyze-button small');reanalyze.disabled=state.busy;
       reanalyze.onclick=async()=>{
         try {
           const prepared=await api.prepareHistoryAnalysis(item.id);
@@ -208,18 +261,24 @@ function renderLibrary() {
         }catch(e){$('library-error').textContent=e.message;}
       };actions.append(reanalyze);
     }
-    for(const [role,label] of (item.compatible?[['target','ワークスペースに追加'],['reference','リファレンスに追加']]:[])){
-      const button=text('button',role==='target'?'＋ WS':'＋ REF','secondary small');button.setAttribute('aria-label',label);button.title=label;button.disabled=!item.compatible;
-      button.onclick=async()=>{try{addResult(await api.loadHistory(item.id),role);$('history-dialog').close();}catch(e){$('library-error').textContent=e.message;}};actions.append(button);
+    for(const [role,label] of (item.compatible?(libraryRole==='reference'?[['reference','リファレンスに追加']]:[['target','ワークスペースに追加'],['reference','リファレンスに追加']]):[])){
+      const button=text('button',role==='target'?'＋ WS':'＋ REF','secondary small');button.setAttribute('aria-label',label);button.title=label;button.disabled=!item.compatible||(role==='reference'&&!state.targets.some(track=>track.id===libraryWorkspaceId));
+      button.onclick=async()=>{try{addResult(await api.loadHistory(item.id),role,libraryWorkspaceId);$('history-dialog').close();}catch(e){$('library-error').textContent=e.message;}};actions.append(button);
     }
     row.append(actions);$('history-items').append(row);
   }
 }
-$('history').onclick=async()=>{
+async function openLibrary(role=null){
+  libraryRole=role;libraryWorkspaceId=state.target?.id;
+  $('library-destination').textContent=state.target?`リファレンスの追加先：${state.target.name}`:'リファレンスを追加するにはワークスペースを選択してください。';
   try {libraryItems=await api.history();librarySelected.clear();$('library-search').value='';$('library-error').textContent='';renderLibrary();$('history-dialog').showModal();}
   catch(e){notice(e.message);}
 };
-$('empty-library').onclick=()=>$('history').onclick();
+$('history').onclick=()=>openLibrary();
+$('empty-library').onclick=()=>openLibrary();
+$('reference-library').onclick=()=>openLibrary('reference');
+$('library-compatible-only').checked=localStorage.getItem('library-compatible-only')==='true';
+$('library-compatible-only').onchange=()=>{localStorage.setItem('library-compatible-only',String($('library-compatible-only').checked));renderLibrary();};
 $('library-search').oninput=renderLibrary;
 $('library-select-all').onchange=()=>{for(const item of visibleLibraryItems()){if($('library-select-all').checked)librarySelected.add(item.id);else librarySelected.delete(item.id);}renderLibrary();};
 document.querySelectorAll('.library-sort').forEach(button=>button.onclick=()=>{const key=button.dataset.sort;librarySort={key,direction:librarySort.key===key?-librarySort.direction:1};renderLibrary();});
@@ -245,6 +304,7 @@ $('export').onclick=async()=>{
     await api.export({target:strip(state.target),references:state.references.map(strip),ranges:state.ranges,transient_band:$('transient-band').value,transient_type:$('transient-type').value,vocal_ranges:state.vocalRanges,vocal_modes:state.vocalModes,envelope_comparison:{mode:$('envelope-mode').value,reference_id:$('envelope-reference').value,reference_time:referenceEvent?.time??null,target_time:state.event?.time??null},rhythm_settings:state.rhythmSettings,exported_at:new Date().toISOString()});
   }catch(e){notice(e.message);}
 };
+$('open-references').onclick=()=>{state.tab='references';state.event=null;renderDashboard();};
 document.querySelectorAll('#tabs button').forEach(b=>b.onclick=()=>{state.tab=b.dataset.tab;state.event=null;renderDashboard();});
 $('component').onchange=renderDashboard;$('time-window').onchange=renderDashboard;$('spatial-metric').onchange=renderDashboard;
 $('range-apply').onclick=()=>{
@@ -291,25 +351,41 @@ function renderStructure(reset=false){
 
 function renderTracks() {
   $('target-list').replaceChildren();$('reference-list').replaceChildren();
+  $('workspace-count').textContent=state.targets.length;
+  $('reference-context').textContent=state.target?`${state.target.name} と比較する音源 · ${state.references.length} 曲`:'';
   for(const track of state.targets){
     const row=text('div','',`track${track.id===state.target?.id?' selected':''}`);
     const select=text('button',track.name,'text-button');select.onclick=()=>{state.target=track;state.event=null;render();refreshPlayer();};
     const remove=text('button','×','workspace-remove');remove.title='ワークスペースから外す';remove.setAttribute('aria-label',`${track.name} をワークスペースから外す`);
     remove.onclick=()=>{
       state.targets=state.targets.filter(r=>r.id!==track.id);
+      workspaceSettings.delete(track.id);
       if(state.target?.id===track.id)state.target=state.targets[0]||null;
       state.event=null;render();refreshPlayer();
     };
-    row.append(select,remove,text('small',`${duration(track.duration)} · ${track.mode==='mix'?'元音源のみ':track.mode==='stems'?'入力ステム':'自動分離'}`));$('target-list').append(row);
+    select.title=track.name;row.append(select,remove);$('target-list').append(row);
   }
   if(!state.targets.length)$('target-list').append(text('p','ミックスを選択してください','quiet'));
   for(const r of state.references){
-    const row=text('div','','track');row.append(text('strong',r.name),text('small',`${duration(range(r)[0])} – ${duration(range(r)[1])}`));
-    const actions=text('div','','track-actions');
-    const swap=text('button','表示・区間指定','text-button');swap.onclick=()=>{const previous=state.target;state.target=r;if(!state.targets.some(x=>x.id===r.id))state.targets.push(r);state.references=state.references.filter(x=>x.id!==r.id);if(previous&&previous.id!==r.id)state.references.push(previous);state.event=null;render();refreshPlayer();};
-    const remove=text('button','外す','text-button');remove.onclick=()=>{state.references=state.references.filter(x=>x.id!==r.id);render();refreshPlayer();};actions.append(swap,remove);row.append(actions);$('reference-list').append(row);
+    const row=text('div','','track reference-track');row.dataset.referenceId=r.id;
+    const info=text('div','','reference-info');info.append(text('strong',r.name),text('small',`${duration(r.duration)} · ${r.mode==='mix'?'元音源のみ':r.mode==='stems'?'入力ステム':'自動分離'}`));row.append(info);
+    const controls=text('div','','reference-controls');
+    const start=text('input'),end=text('input');
+    for(const [input,label,value] of [[start,'開始',range(r)[0]],[end,'終了',range(r)[1]]]){
+      input.type='number';input.min=0;input.max=r.duration;input.step=.1;input.value=value.toFixed(2);input.setAttribute('aria-label',`${r.name} の比較区間 ${label}秒`);
+      const field=text('label',label+' ');field.append(input,text('span',' 秒'));controls.append(field);
+    }
+    const apply=text('button','区間を適用','secondary small');apply.onclick=()=>{
+      const a=Number(start.value),b=Number(end.value);
+      if(!start.value.trim()||!end.value.trim()||!Number.isFinite(a)||!Number.isFinite(b)||a<0||b>r.duration||a>=b){notice('比較区間は開始 < 終了で、曲の長さの範囲内に指定してください。');return;}
+      state.ranges[r.id]=[a,b];notice();render();
+    };
+    const listen=text('button','▶ 試聴','text-button');listen.onclick=()=>{seekTrack(r,range(r)[0]);$('audio').play().catch(e=>notice(e.message));};
+    const remove=text('button','外す','text-button');remove.onclick=()=>{state.references=state.references.filter(x=>x.id!==r.id);render();refreshPlayer();};
+    controls.append(apply,listen,remove);row.append(controls);$('reference-list').append(row);
   }
-  if(!state.references.length)$('reference-list').append(text('p','目標の音を並べて比較','quiet'));
+  if(!state.references.length)$('reference-list').append(text('p','比較したい音源を追加してください。リファレンスはこのワークスペースにだけ追加されます。','quiet'));
+
 }
 function render() {renderTracks();renderDashboard();}
 const views={
@@ -321,11 +397,18 @@ const views={
   density:{cards:[['density_pct','時間・周波数の占有度','%','−23 LUFS換算 / ERB帯域'],['congestion_pct','分離パート間の競合','%','最大パートから12 dB以内が2つ以上'],['vocals_competition','声と伴奏の競合','%','声の有効帯域に限定'],['drums_competition','ドラムと他の競合','%','音数や良し悪しの点数ではありません']],line:'density_pct',title:'時間・周波数の占有度',description:'楽器数ではなく、一定水準以上の音が存在する帯域の割合を測ります。',heat:'spectrum_db',heatTitle:'音が存在する帯域',detail:'density'}
 };
 function renderDashboard() {
+  persistSession();
   document.querySelectorAll('#tabs button').forEach(b=>b.classList.toggle('active',b.dataset.tab===state.tab));
-  const r=state.target;$('empty').hidden=!!r;$('dashboard').hidden=!r;$('export').disabled=!r;
+  const r=state.target,referenceTab=state.tab==='references';
+  $('empty').hidden=!!r;$('dashboard').hidden=!r||referenceTab;$('export').disabled=!r;
+  $('workspace-references').hidden=!r||!referenceTab;
+  $('reference-prompt').hidden=!r||state.references.length>0||referenceTab;
+  document.querySelector('[data-tab="references"]').disabled=!r;
   if(!r){$('track-title').textContent='ミックス解析';$('track-meta').textContent='解析する音源を選択してください';return;}
-  const v=views[state.tab];$('track-title').textContent=r.name;
+  $('track-title').textContent=r.name;
   $('track-meta').textContent=`${duration(r.duration)}  /  ${(r.metadata.source_sample_rate/1000).toFixed(1)} kHz  /  ${r.metadata.source_channels===1?'MONO':'STEREO'}  /  ${number(r.loudness_lufs)} LUFS  /  ${r.model||'入力音源'}${r.device?' · '+(r.device_label||r.device.toUpperCase())+'で分離':''}${r.cached?' / 保存済み解析':r.separation_cached?' / 保存済み分離ステム':''}`;
+  if(referenceTab)return;
+  const v=views[state.tab];
   $('range-start').value=range(r)[0].toFixed(2);$('range-end').value=range(r)[1].toFixed(2);$('range-end').max=r.duration;
   renderVocalEditor(r);
   renderStructure();
@@ -578,6 +661,6 @@ if(api){
   };
   $('engine-manage').onclick=async()=>{$('engine-setup').hidden=false;const status=await api.engineStatus();$('engine-setup-message').textContent=status.python?`使用中: ${status.python}`:'Python 3.13以上 または uv を準備してセットアップしてください。';};
   $('engine-close').onclick=()=>{$('engine-setup').hidden=true;};
-  initializeEngine();
+  restoreSession().then(()=>initializeEngine());
 }
 else{$('engine-status').textContent='Electronから起動してください';notice('npm start でデスクトップアプリを起動してください。');}

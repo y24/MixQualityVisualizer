@@ -1,8 +1,10 @@
+const {resetSession}=require('./session-helpers.cjs');
 const { test, expect, _electron } = require('@playwright/test');
 const path = require('node:path');
 let app,page;
 test.describe.configure({mode:'serial'});
 test.beforeAll(async()=>{
+  resetSession();
   app=await _electron.launch({args:[path.resolve(__dirname,'../..')],env:{...process.env,MQV_TEST_PROFILE:'1',ELECTRON_DISABLE_SECURITY_WARNINGS:'true'}});
   page=await app.firstWindow();
 });
@@ -39,12 +41,14 @@ test('desktop imports synthetic stems, analyzes, plays and compares cached refer
     const files=['mix','vocals','drums','bass','other'].map(name=>`${folder}/${name}.wav`);
     dialog.showOpenDialog=async()=>({canceled:false,filePaths:[files.shift()]});
   },reference);
+  await page.locator('[data-tab=references]').click();
   await page.getByRole('button',{name:'リファレンスを追加',exact:true}).click();
   await page.locator('#choose-mix').click();await page.locator('#import-mode').selectOption('stems');
   for(let i=0;i<4;i++)await page.locator('#stem-fields button').nth(i).click();
   await page.locator('#import-submit').click();
   await expect(page.locator('#progress-panel')).toBeHidden({timeout:90000});
   await expect(page.locator('#reference-list .track')).toHaveCount(1);
+  await page.locator('[data-tab=spatial]').click();
   await expect(page.locator('#cards .card-delta').first()).toContainText('REF');
   await page.locator('#spatial-metric').selectOption('band_correlation');
   await expect(page.locator('#heatmap-title')).toHaveText('帯域別の左右相関');

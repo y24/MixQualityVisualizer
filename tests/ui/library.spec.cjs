@@ -1,6 +1,8 @@
+const {resetSession}=require('./session-helpers.cjs');
 const { test, expect, _electron } = require('@playwright/test');
 const path = require('node:path');
 test('library survives restart and supports preview, search and both destinations', async () => {
+  resetSession();
   let app;
   const launch = () => _electron.launch({args:[path.resolve(__dirname,'../..')],env:{...process.env,MQV_TEST_PROFILE:'1',ELECTRON_DISABLE_SECURITY_WARNINGS:'true'}});
   try {
@@ -68,6 +70,7 @@ test('library survives restart and supports preview, search and both destination
 
 test('empty-state entry points, workspace removal and direct legacy reanalysis', async () => {
   const root=path.resolve(__dirname,'../..');
+  resetSession();
   const app=await _electron.launch({args:[root],env:{...process.env,MQV_TEST_PROFILE:'1',ELECTRON_DISABLE_SECURITY_WARNINGS:'true'}});
   try {
     const page=await app.firstWindow();

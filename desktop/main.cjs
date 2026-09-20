@@ -139,6 +139,16 @@ app.whenReady().then(() => {
     return exposeResult({...r,cached:true});
   });
   ipcMain.handle('remove-history', (e, ids) => { trusted(e); return library.remove(ids); });
+  ipcMain.handle('save-session', (e, snapshot) => { trusted(e); library.saveSession(snapshot); });
+  ipcMain.handle('load-session', e => {
+    trusted(e);
+    const saved=library.loadSession(), results=[], warnings=[];
+    for(const result of saved.results) {
+      try { results.push(exposeResult({...result,cached:true})); }
+      catch(error) { warnings.push(`${result.name}: ${error.message}`); }
+    }
+    return {snapshot:saved.snapshot,results,warnings};
+  });
   ipcMain.handle('prepare-history-analysis', (e, id) => {
     trusted(e);
     const prepared = library.prepareAnalysis(id);
