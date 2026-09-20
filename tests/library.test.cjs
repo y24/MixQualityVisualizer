@@ -42,5 +42,13 @@ test('library persists results, preserves source aliases, migrates idempotently 
     assert.ok(fs.existsSync(path.join(cache, 'result.json')));
     // Explicitly analyzing again restores the registration.
     library.save(r);assert.equal(library.list(7).length, 1);
+    const restored=library.list(7)[0];
+    assert.equal(library.prepareAnalysis(restored.id).source, null);
+    const source=path.join(cache,'result.json');
+    library.save({...r,source,mode:'stems',analysis_request:{device:'cpu',stems:{vocals:source,drums:'missing.wav'}}});
+    const prepared=library.prepareAnalysis(library.list(7).find(x=>x.source===source).id);
+    assert.equal(prepared.source.path,source);
+    assert.deepEqual(Object.keys(prepared.stems),['vocals']);
+    assert.equal(prepared.device,'cpu');
   } finally { library.close();fs.rmSync(dir, { recursive: true, force: true }); }
 });

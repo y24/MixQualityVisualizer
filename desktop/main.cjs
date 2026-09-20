@@ -115,9 +115,16 @@ app.whenReady().then(() => {
     trusted(e);
     if (activeJob) throw new Error('解析中です。完了を待つかキャンセルしてください。');
     if (!request || !allowed.has(request.path) || Object.values(request.stems || {}).some(p => !allowed.has(p))) throw new Error('選択済みの音源を指定してください。');
+    const previous = request.libraryId == null ? null : library.load(request.libraryId);
     const job = worker(request, msg => { if (!win.isDestroyed()) win.webContents.send('progress', msg); });
     activeJob = job;
-    try { const result = await job.promise; library.save(result); return exposeResult(result); }
+    try {
+      const result = await job.promise;
+      result.analysis_request = {mode:request.mode,model:request.model,device:request.device,stems:request.stems || {}};
+      library.save(result);
+      if(previous && (previous.id!==result.id || path.resolve(previous.source)!==path.resolve(result.source))) library.remove([request.libraryId]);
+      return exposeResult(result);
+    }
     finally { if (activeJob === job) activeJob = null; }
   });
   ipcMain.handle('cancel', e => { trusted(e); activeJob?.child.kill(); });
@@ -132,6 +139,12 @@ app.whenReady().then(() => {
     return exposeResult({...r,cached:true});
   });
   ipcMain.handle('remove-history', (e, ids) => { trusted(e); return library.remove(ids); });
+  ipcMain.handle('prepare-history-analysis', (e, id) => {
+    trusted(e);
+    const prepared = library.prepareAnalysis(id);
+    for(const file of [prepared.source,...Object.values(prepared.stems)]) if(file) allowed.add(file.path);
+    return prepared;
+  });
   ipcMain.handle('export', async (e, payload) => {
     trusted(e);
     const chosen = await dialog.showSaveDialog(win, { defaultPath: 'mix-analysis.json', filters: [{name:'JSON',extensions:['json']}] });

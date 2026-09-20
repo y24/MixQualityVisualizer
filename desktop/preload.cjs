@@ -15,6 +15,7 @@ contextBridge.exposeInMainWorld('mixApp', {
   history: () => ipcRenderer.invoke('history'),
   loadHistory: id => ipcRenderer.invoke('load-history', id),
   removeHistory: ids => ipcRenderer.invoke('remove-history', ids),
+  prepareHistoryAnalysis: id => ipcRenderer.invoke('prepare-history-analysis', id),
   export: result => ipcRenderer.invoke('export', result),
   demo: () => ipcRenderer.invoke('demo'),
   onProgress: callback => {

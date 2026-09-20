@@ -76,6 +76,17 @@ class Library {
       return count;
     } catch (error) { this.db.exec('ROLLBACK'); throw error; }
   }
+  prepareAnalysis(id) {
+    const result = this.load(id), saved = result.analysis_request || {};
+    const file = filename => filename && fs.existsSync(filename) ? {path:filename,name:path.basename(filename)} : null;
+    const stems = {};
+    if (result.mode === 'stems') for (const part of ['vocals','drums','bass','other']) {
+      const stem = file(saved.stems?.[part]);
+      if (stem) stems[part] = stem;
+    }
+    return { id, source:file(result.source), mode:result.mode, model:result.model,
+      device:saved.device || result.requested_device || 'auto', stems };
+  }
   close() { this.db.close(); }
 }
 module.exports = { Library };

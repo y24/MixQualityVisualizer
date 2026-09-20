@@ -65,3 +65,50 @@ test('library survives restart and supports preview, search and both destination
     expect(remaining.some(x=>removed.includes(x.id))).toBe(false);
   } finally {await app?.close();}
 });
+
+test('empty-state entry points, workspace removal and direct legacy reanalysis', async () => {
+  const root=path.resolve(__dirname,'../..');
+  const app=await _electron.launch({args:[root],env:{...process.env,MQV_TEST_PROFILE:'1',ELECTRON_DISABLE_SECURITY_WARNINGS:'true'}});
+  try {
+    const page=await app.firstWindow();
+    const errors=[];page.on('pageerror',e=>errors.push(e.message));
+    await expect(page.locator('#engine-status')).toContainText('Python',{timeout:30000});
+    await page.screenshot({path:'test-results/empty-library.png'});
+    await page.locator('#empty-library').click();await expect(page.locator('#history-dialog')).toBeVisible();
+    await page.locator('#history-close').click();
+    await page.locator('#empty-import').click();await expect(page.locator('#import-dialog')).toBeVisible();
+    await page.locator('#import-close').click();
+    const result=await page.evaluate(async()=>{const request=await window.mixApp.demo();request.mode='mix';request.stems={};const result=await window.mixApp.analyze(request);addResult(result,'target');return result;});
+    await page.locator('#demo').click();await expect(page.locator('#progress-panel')).toBeHidden({timeout:90000});
+    await expect(page.locator('#target-list .track')).toHaveCount(2);
+    // Removing the selected track selects the remaining track.
+    await page.locator('#target-list .track.selected .workspace-remove').click();
+    expect(await page.evaluate(()=>state.target.id)).toBe(result.id);
+    await page.locator('#target-list .workspace-remove').click();
+    await expect(page.locator('#empty')).toBeVisible();await expect(page.locator('#track-title')).toHaveText('ミックス解析');
+    expect(await page.locator('#audio').evaluate(a=>a.paused&&!a.hasAttribute('src'))).toBe(true);
+    expect((await page.evaluate(()=>window.mixApp.history())).some(x=>x.analysis_id===result.id)).toBe(true);
+    // Seed a synthetic old-version result; user audio is never modified.
+    const legacy=Number(require('node:child_process').execFileSync(process.execPath,['-e',`
+      const fs=require('node:fs');const {root,result}=JSON.parse(fs.readFileSync(0,'utf8'));
+      const {Library}=require(root+'/desktop/library.cjs');
+      const library=new Library(root+'/.cache/ui-test-profile/library.sqlite');
+      try {library.save({...result,id:'e'.repeat(24),version:'legacy-test'});process.stdout.write(String(library.list('unused').find(x=>x.analysis_id==='e'.repeat(24)).id));}
+      finally{library.close();}
+    `],{input:JSON.stringify({root,result}),encoding:'utf8',windowsHide:true}));
+    await page.locator('#empty-library').click();
+    const row=page.locator(`[data-library-id="${legacy}"]`);
+    await row.getByRole('button',{name:'再解析',exact:true}).click();
+    await expect(page.locator('#choose-mix')).toHaveText('mix.wav');
+    await expect(page.locator('#import-mode')).toHaveValue('mix');
+    await page.locator('#import-close').click();
+    expect((await page.evaluate(()=>window.mixApp.history())).some(x=>x.id===legacy)).toBe(true);
+    await page.locator('#empty-library').click();await row.getByRole('button',{name:'再解析',exact:true}).click();
+    await page.locator('#import-submit').click();
+    await expect(page.locator('#history-dialog')).toBeVisible({timeout:90000});
+    const items=await page.evaluate(()=>window.mixApp.history());
+    expect(items.some(x=>x.analysis_id==='e'.repeat(24))).toBe(false);
+    expect(items.some(x=>x.analysis_id===result.id&&x.compatible)).toBe(true);
+    expect(errors).toEqual([]);
+  } finally {await app.close();}
+});

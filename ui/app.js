@@ -63,7 +63,7 @@ function stat(track,key) {
 }
 function refsFor(track) { return state.references.filter(r=>r.max_frequency===track.max_frequency&&r.version===track.version); }
 function refStat(key) { return median(refsFor(state.target).map(r=>stat(r,key))); }
-function setBusy(busy) { state.busy=busy;$('progress-panel').hidden=!busy;for(const id of ['add-target','add-reference','demo','empty-import','history'])$(id).disabled=busy; }
+function setBusy(busy) { state.busy=busy;$('progress-panel').hidden=!busy;for(const id of ['add-target','add-reference','demo','empty-import','empty-library','history'])$(id).disabled=busy; }
 api?.onProgress(msg=>{ const percent=Math.max(0,Math.min(100,Math.round(msg.percent)));$('progress').value=percent;$('progress-percent').textContent=`${percent}%`;$('progress-message').textContent=msg.message; });
 
 function addResult(result,role) {
@@ -83,13 +83,13 @@ function addResult(result,role) {
 }
 async function analyze(request,role) {
   notice();setBusy(true);$('progress').value=0;$('progress-percent').textContent='0%';$('progress-message').textContent='解析を開始しています';
-  try {addResult(await api.analyze(request),role);}
+  try {const result=await api.analyze(request);if(role==='library'){await $('history').onclick();}else addResult(result,role);}
   catch(e) {notice(e.message);}
-  finally {setBusy(false);}
+  finally {setBusy(false);if(role==='library'&&$('history-dialog').open)renderLibrary();}
 }
 function openImport(role) {
   if(state.busy)return;
-  state.role=role;state.pending=null;state.stems={};
+  state.role=role;state.pending=null;state.stems={};state.reanalysisId=null;
   $('import-title').textContent=role==='target'?'解析する音源':'リファレンスを追加';
   $('choose-mix').textContent='＋ ミックス音源を選択';$('import-error').textContent='';
   drawStemFields();updateMode();$('import-dialog').showModal();
@@ -130,7 +130,7 @@ $('import-form').onsubmit=e=>{
   e.preventDefault();
   if(!state.pending){$('import-error').textContent='ミックス音源を選んでください。';return;}
   if($('import-mode').value==='stems'&&Object.keys(state.stems).length!==4){$('import-error').textContent='4つのステムを指定してください。';return;}
-  const request={path:state.pending.path,mode:$('import-mode').value,model:$('model').value,device:$('device').value,stems:Object.fromEntries(Object.entries(state.stems).map(([k,v])=>[k,v.path]))};
+  const request={libraryId:state.reanalysisId,path:state.pending.path,mode:$('import-mode').value,model:$('model').value,device:$('device').value,stems:Object.fromEntries(Object.entries(state.stems).map(([k,v])=>[k,v.path]))};
   $('import-dialog').close();analyze(request,state.role);
 };
 $('cancel').onclick=()=>api.cancel();
@@ -191,7 +191,24 @@ function renderLibrary() {
     for(const key of ['vocals_db','drums_db','low_pct','side_pct'])row.append(text('td',number(item.summary[key]?.median)));
     row.append(text('td',`${item.mode==='mix'?'元音源のみ':item.mode==='stems'?'入力ステム':'自動分離'}${!item.compatible?' / 旧版・再解析が必要':''}${!item.sourceExists?' / 元ファイルなし':''}`));
     const actions=text('td','','library-actions');
-    for(const [role,label] of [['target','ワークスペースに追加'],['reference','リファレンスに追加']]){
+    if(!item.compatible){
+      const reanalyze=text('button','再解析','secondary small');reanalyze.disabled=state.busy;
+      reanalyze.onclick=async()=>{
+        try {
+          const prepared=await api.prepareHistoryAnalysis(item.id);
+          $('history-dialog').close();openImport('library');
+          state.reanalysisId=item.id;state.pending=prepared.source;state.stems=prepared.stems;
+          $('import-title').textContent='ライブラリの音源を再解析';
+          $('choose-mix').textContent=prepared.source?.name||'＋ 元音源を選び直す';
+          $('import-mode').value=prepared.mode;
+          if(prepared.model)$('model').value=prepared.model;
+          if([...$('device').options].some(option=>option.value===prepared.device))$('device').value=prepared.device;
+          drawStemFields();updateMode();updateDeviceHint();
+          $('import-error').textContent=!prepared.source?'元音源が見つかりません。移動先の音源を選択してください。':prepared.mode==='stems'&&Object.keys(prepared.stems).length!==4?'以前の入力ステムのパスが未保存、またはファイルが見つかりません。4ステムを選び直してください。':'';
+        }catch(e){$('library-error').textContent=e.message;}
+      };actions.append(reanalyze);
+    }
+    for(const [role,label] of (item.compatible?[['target','ワークスペースに追加'],['reference','リファレンスに追加']]:[])){
       const button=text('button',role==='target'?'＋ WS':'＋ REF','secondary small');button.setAttribute('aria-label',label);button.title=label;button.disabled=!item.compatible;
       button.onclick=async()=>{try{addResult(await api.loadHistory(item.id),role);$('history-dialog').close();}catch(e){$('library-error').textContent=e.message;}};actions.append(button);
     }
@@ -202,6 +219,7 @@ $('history').onclick=async()=>{
   try {libraryItems=await api.history();librarySelected.clear();$('library-search').value='';$('library-error').textContent='';renderLibrary();$('history-dialog').showModal();}
   catch(e){notice(e.message);}
 };
+$('empty-library').onclick=()=>$('history').onclick();
 $('library-search').oninput=renderLibrary;
 $('library-select-all').onchange=()=>{for(const item of visibleLibraryItems()){if($('library-select-all').checked)librarySelected.add(item.id);else librarySelected.delete(item.id);}renderLibrary();};
 document.querySelectorAll('.library-sort').forEach(button=>button.onclick=()=>{const key=button.dataset.sort;librarySort={key,direction:librarySort.key===key?-librarySort.direction:1};renderLibrary();});
@@ -276,7 +294,13 @@ function renderTracks() {
   for(const track of state.targets){
     const row=text('div','',`track${track.id===state.target?.id?' selected':''}`);
     const select=text('button',track.name,'text-button');select.onclick=()=>{state.target=track;state.event=null;render();refreshPlayer();};
-    row.append(select,text('small',`${duration(track.duration)} · ${track.mode==='mix'?'元音源のみ':track.mode==='stems'?'入力ステム':'自動分離'}`));$('target-list').append(row);
+    const remove=text('button','×','workspace-remove');remove.title='ワークスペースから外す';remove.setAttribute('aria-label',`${track.name} をワークスペースから外す`);
+    remove.onclick=()=>{
+      state.targets=state.targets.filter(r=>r.id!==track.id);
+      if(state.target?.id===track.id)state.target=state.targets[0]||null;
+      state.event=null;render();refreshPlayer();
+    };
+    row.append(select,remove,text('small',`${duration(track.duration)} · ${track.mode==='mix'?'元音源のみ':track.mode==='stems'?'入力ステム':'自動分離'}`));$('target-list').append(row);
   }
   if(!state.targets.length)$('target-list').append(text('p','ミックスを選択してください','quiet'));
   for(const r of state.references){
@@ -299,7 +323,7 @@ const views={
 function renderDashboard() {
   document.querySelectorAll('#tabs button').forEach(b=>b.classList.toggle('active',b.dataset.tab===state.tab));
   const r=state.target;$('empty').hidden=!!r;$('dashboard').hidden=!r;$('export').disabled=!r;
-  if(!r)return;
+  if(!r){$('track-title').textContent='ミックス解析';$('track-meta').textContent='解析する音源を選択してください';return;}
   const v=views[state.tab];$('track-title').textContent=r.name;
   $('track-meta').textContent=`${duration(r.duration)}  /  ${(r.metadata.source_sample_rate/1000).toFixed(1)} kHz  /  ${r.metadata.source_channels===1?'MONO':'STEREO'}  /  ${number(r.loudness_lufs)} LUFS  /  ${r.model||'入力音源'}${r.device?' · '+(r.device_label||r.device.toUpperCase())+'で分離':''}${r.cached?' / 保存済み解析':r.separation_cached?' / 保存済み分離ステム':''}`;
   $('range-start').value=range(r)[0].toFixed(2);$('range-end').value=range(r)[1].toFixed(2);$('range-end').max=r.duration;
@@ -503,7 +527,7 @@ function refreshPlayer(){
 function currentListen(){return[state.target,...state.references].find(r=>r?.id===$('listen-track').value);}
 function updateSources(){
   const r=currentListen(),source=$('listen-source').value;$('listen-source').replaceChildren();
-  if(!r)return;
+  if(!r){const audio=$('audio');audio.onloadedmetadata=null;audio.pause();audio.removeAttribute('src');audio.load();$('playing-name').textContent='音源未選択';$('preview-gain').textContent='ゲイン補正なし';return;}
   for(const key of Object.keys(r.media)){const option=text('option',sourceNames[key]||key);option.value=key;$('listen-source').append(option);}
   if(r.media[source])$('listen-source').value=source;changeAudio(false);
 }
