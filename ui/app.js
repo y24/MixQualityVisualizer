@@ -389,13 +389,85 @@ function renderTracks() {
 }
 function render() {renderTracks();renderDashboard();}
 const views={
-  overview:{cards:[['vocals_db','声と伴奏のバランス','dB','歌声活動区間の相対レベル'],['drums_db','ドラムの相対音量','dB','非ドラムに対するレベル'],['low_pct','低域の比率','%','20–200 Hz / 全解析帯域'],['side_pct','Sideの比率','%','左右差成分のエネルギー']],line:'vocals_db',title:'声と伴奏のバランス',description:'共通の時間窓・K特性で測定。高いほど伴奏に対してボーカルが大きい。',heat:'vocals_competition',heatTitle:'声と伴奏の帯域競合',detail:'bands'},
-  vocals:{cards:[['vocals_db','声と伴奏のバランス','dB','歌声活動区間の相対レベル'],['vocals_competition','帯域競合率','%','声の有効帯域をエネルギーで重み付け'],['vocals_mid_competition','Mid内の競合','%','Midの声 対 Midの伴奏'],['vocals_side_competition','Side内の競合','%','Sideの声がない区間は対象外']],line:'vocals_db',title:'ボーカルの相対音量',description:'間奏など、エネルギーゲートで対象外になった区間は線を描きません。',heat:'vocals_competition',heatTitle:'ボーカルの帯域競合',detail:'vocals'},
+
+  vocals:{cards:[['vocals_db','声と伴奏のバランス','dB','歌声活動区間の相対レベル'],['vocals_competition','帯域競合率','%','声の有効帯域をエネルギーで重み付け'],['vocals_mid_competition','Mid内の競合','%','Midの声 対 Midの伴奏'],['vocals_side_competition','Side内の競合','%','Sideの声がない区間は対象外']],line:'vocals_db',title:'ボーカルの相対音量',description:'歌声を検出した区間の相対レベルを表示します。',heat:'vocals_competition',heatTitle:'ボーカルの帯域競合',detail:'vocals'},
   drums:{cards:[['drums_db','ドラムの相対音量','dB','非ドラムに対するレベル'],['event:attack_ms','立ち上がり時間','ms','振幅包絡の10% → 90%'],['event:attack_body_db','アタック／ボディ比','dB','0–30 ms 対 50–150 ms'],['event:decay_ms','減衰時間','ms','ピークから−20 dBまで']],line:'drums_db',title:'ドラムの相対音量',description:'持続的な音量と一打の形を分けて確認します。',heat:'drums_competition',heatTitle:'ドラムと他パートの競合',detail:'drums'},
-  bass:{cards:[['bass_db','ベースの相対音量','dB','非ベースに対するレベル'],['low_pct','低域の比率','%','20–200 Hz / 全解析帯域'],['sub_pct','サブ低域の比率','%','20–60 Hz / 全解析帯域'],['bass_competition','ベースの帯域競合','%','低音の多さと楽器の大きさは別']],line:'low_pct',title:'低域が全体を占める割合',description:'元音源から算出する物理的なエネルギー比。知覚的な音量の割合ではありません。',heat:'bass_competition',heatTitle:'ベースと他パートの競合',detail:'low'},
-  spatial:{cards:[['side_pct','Sideの比率','%','広がりの百分率ではありません'],['sm_db','Side / Mid','dB','正値はSide優勢'],['correlation','左右相関','','遅延0・400 ms窓'],['mono_db','モノラル合成差','dB','元のL/R平均パワーが基準']],line:'side_pct',title:'Side比率の時間変化',description:'左右への偏りでも比率は変化します。相関と左右バランスを併せて確認。',heat:'side_pct',heatTitle:'帯域ごとのSide比率',detail:'spatial'},
-  density:{cards:[['density_pct','時間・周波数の占有度','%','−23 LUFS換算 / ERB帯域'],['congestion_pct','分離パート間の競合','%','最大パートから12 dB以内が2つ以上'],['vocals_competition','声と伴奏の競合','%','声の有効帯域に限定'],['drums_competition','ドラムと他の競合','%','音数や良し悪しの点数ではありません']],line:'density_pct',title:'時間・周波数の占有度',description:'楽器数ではなく、一定水準以上の音が存在する帯域の割合を測ります。',heat:'spectrum_db',heatTitle:'音が存在する帯域',detail:'density'}
+  bass:{cards:[['bass_db','ベースの相対音量','dB','非ベースに対するレベル'],['low_pct','低域の比率','%','20–200 Hz / 全解析帯域'],['sub_pct','サブ低域の比率','%','20–60 Hz / 全解析帯域'],['bass_competition','ベースの帯域競合','%','ベースの有効帯域で他パートが優勢な割合']],line:'low_pct',title:'低域が全体を占める割合',description:'元音源の全帯域に占める20–200 Hzのエネルギー比。',heat:'bass_competition',heatTitle:'ベースと他パートの競合',detail:'low'},
+  spatial:{cards:[['side_pct','Sideの比率','%','左右差成分のエネルギー比'],['sm_db','Side / Mid','dB','正値はSide優勢'],['correlation','左右相関','','遅延0・400 ms窓'],['mono_db','モノラル合成差','dB','元のL/R平均パワーが基準']],line:'side_pct',title:'Side比率の時間変化',description:'左右への偏りでも比率は変化します。相関と左右バランスを併せて確認。',heat:'side_pct',heatTitle:'帯域ごとのSide比率',detail:'spatial'},
+  density:{cards:[['density_pct','時間・周波数の占有度','%','−23 LUFS換算 / ERB帯域'],['congestion_pct','分離パート間の競合','%','最大パートから12 dB以内が2つ以上'],['vocals_competition','声と伴奏の競合','%','声の有効帯域に限定'],['drums_competition','ドラムと他の競合','%','ドラムの有効帯域で他パートが優勢な割合']],line:'density_pct',title:'時間・周波数の占有度',description:'一定水準以上の音が存在する帯域の割合を表示します。',heat:'spectrum_db',heatTitle:'音が存在する帯域',detail:'density'}
 };
+const overviewGroups=[
+  ['vocals','ボーカル',[['vocals_db','相対音量','dB'],['vocals_competition','伴奏との競合','%']]],
+  ['drums','ドラム',[['drums_db','相対音量','dB'],['drums_competition','他パートとの競合','%']]],
+  ['bass','低域',[['low_pct','低域の比率','%'],['sub_pct','サブ低域の比率','%']]],
+  ['spatial','M/S・音像',[['side_pct','Sideの比率','%'],['correlation','左右相関','']]],
+  ['density','密集度・競合',[['density_pct','時間・周波数の占有度','%'],['congestion_pct','パート間の競合','%']]]
+];
+function comparison(key,unit){
+  const value=stat(state.target,key),reference=refStat(key),digits=key==='correlation'?2:1;
+  const delta=valid(value)&&valid(reference)?Number((value-reference).toFixed(digits)):null;
+  return {value,reference,delta,digits,deltaUnit:unit==='%'?'pt':unit};
+}
+function deltaLabel(c){
+  if(!valid(c.value))return '対象の測定値なし';
+  if(!valid(c.reference))return state.references.length?'比較可能なREFなし':'REF未設定';
+  return `${c.delta>0?'+':''}${number(c.delta,c.digits)} ${c.deltaUnit}`.trim();
+}
+function overviewScales(){
+  // Absolute ranges shared by metrics with the same unit. Expand dB for outliers.
+  const scales={dB:[-24,0],pt:[0,100],'':[-1,1]};
+  for(const [, ,metrics] of overviewGroups)for(const [key,,unit] of metrics){
+    if(unit!=='dB')continue;
+    const c=comparison(key,unit);
+    for(const value of [c.value,c.reference])if(valid(value)){
+      scales.dB[0]=Math.min(scales.dB[0],Math.floor(value/6)*6);
+      scales.dB[1]=Math.max(scales.dB[1],Math.ceil(value/6)*6);
+    }
+  }
+  return scales;
+}
+function comparisonBar(c,scale,label,unit){
+  const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');
+  svg.setAttribute('viewBox','0 0 400 24');svg.setAttribute('preserveAspectRatio','none');svg.classList.add('comparison-bar');
+  svg.setAttribute('role','img');svg.setAttribute('aria-label',`${label}：対象 ${number(c.value,c.digits)} ${unit}、REF ${number(c.reference,c.digits)} ${unit}。表示範囲 ${scale[0]}〜${scale[1]} ${unit}`);
+  const shape=(tag,attributes)=>{const node=document.createElementNS(svg.namespaceURI,tag);for(const [key,value] of Object.entries(attributes))node.setAttribute(key,value);svg.append(node);};
+  const position=value=>2+Math.max(0,Math.min(1,(value-scale[0])/(scale[1]-scale[0])))*396;
+  shape('rect',{x:2,y:6,width:396,height:12,rx:3,class:'bar-track'});
+  if(valid(c.value))shape('rect',{x:2,y:6,width:position(c.value)-2,height:12,rx:3,class:'bar-target-fill'});
+  if(valid(c.reference)){
+    const x=position(c.reference);
+    shape('line',{x1:x,x2:x,y1:1,y2:23,class:'bar-reference'});
+  }
+  return svg;
+}
+function renderOverview(){
+  const root=$('overview-summary');root.replaceChildren();
+  const heading=text('div','','overview-heading'),title=text('div');
+  title.append(text('h2','ミックス全体を見渡す'));
+  const manage=text('button','比較する曲を選ぶ →','secondary small');manage.onclick=()=>{state.tab='references';renderDashboard();};heading.append(title,manage);root.append(heading);
+  const refs=refsFor(state.target),context=text('p',refs.length?`比較基準：${refs.map(r=>r.name).join(' / ')}${refs.length>1?'（各曲の中央値を等重みで集約）':''}`:'リファレンスを追加すると、各指標の差を表示します。','comparison-context');root.append(context);
+  if(state.references.length>refs.length)root.append(text('p',`解析条件が異なる ${state.references.length-refs.length} 曲を比較から除外しています。`,'comparison-context'));
+  const scales=overviewScales(),legend=text('div','','overview-legend');
+  const legendRail=text('div','','overview-legend-rail');legendRail.append(text('span','対象','target-legend'),text('span','REF','ref-legend'));legend.append(text('span','指標','legend-label'),legendRail,text('span','REFとの差','legend-difference'));root.append(legend);
+  for(const [tab,label,metrics] of overviewGroups){
+    const group=text('section','','overview-group');group.dataset.category=tab;
+    const link=text('button',label+' →','overview-link');link.onclick=()=>{state.tab=tab;renderDashboard();};group.append(link);
+    const rows=text('div','','overview-metrics');
+    for(const [key,label,unit] of metrics){
+      const c=comparison(key,unit),row=text('div','','overview-metric');row.dataset.metric=key;
+      const scale=scales[c.deltaUnit],name=text('div','','metric-identity');name.append(text('strong',label),text('span',`${scale[0]} → ${scale[1]} ${unit}`,'metric-scale'));row.append(name);
+      const plot=text('div','','metric-plot');plot.append(comparisonBar(c,scale,label,unit));
+      const values=text('div','','metric-values'),targetValue=text('span'),referenceValue=text('span');
+      targetValue.append(text('span','対象 '),text('span',`${number(c.value,c.digits)} ${unit}`,'target-value'));
+      referenceValue.append(text('span','REF '),text('span',`${number(c.reference,c.digits)} ${unit}`,'reference-value'));values.append(targetValue,referenceValue);plot.append(values);row.append(plot);
+      const delta=text('div','','difference');delta.append(text('strong',deltaLabel(c),valid(c.delta)?'':'unavailable'));
+      if(valid(c.delta))delta.append(text('span',c.delta>0?'REFより高い':c.delta<0?'REFより低い':'REFと同じ'));
+      row.append(delta);rows.append(row);
+    }
+    group.append(rows);root.append(group);
+  }
+  root.append(text('p','選択区間の中央値を比較 · pt = パーセントポイント','overview-scale'));
+}
 function renderDashboard() {
   persistSession();
   document.querySelectorAll('#tabs button').forEach(b=>b.classList.toggle('active',b.dataset.tab===state.tab));
@@ -408,16 +480,21 @@ function renderDashboard() {
   $('track-title').textContent=r.name;
   $('track-meta').textContent=`${duration(r.duration)}  /  ${(r.metadata.source_sample_rate/1000).toFixed(1)} kHz  /  ${r.metadata.source_channels===1?'MONO':'STEREO'}  /  ${number(r.loudness_lufs)} LUFS  /  ${r.model||'入力音源'}${r.device?' · '+(r.device_label||r.device.toUpperCase())+'で分離':''}${r.cached?' / 保存済み解析':r.separation_cached?' / 保存済み分離ステム':''}`;
   if(referenceTab)return;
+  const overview=state.tab==='overview';
+  $('overview-summary').hidden=!overview;
+  for(const element of [$('cards'),document.querySelector('.timeline-panel'),$('detail-panels'),$('measurement-notes')])element.hidden=overview;
+  $('structure-panel').hidden=overview;
   const v=views[state.tab];
   $('range-start').value=range(r)[0].toFixed(2);$('range-end').value=range(r)[1].toFixed(2);$('range-end').max=r.duration;
   renderVocalEditor(r);
   renderStructure();
   $('cards').replaceChildren();
+  if(overview){$('rhythm-panel').hidden=true;$('transient-panel').hidden=true;renderOverview();return;}
   for(const [key,label,unit,note] of v.cards){
     const value=stat(r,key),reference=refStat(key),card=text('div','','card');card.append(text('div',label,'card-label'));
     const num=text('div',number(value,key==='correlation'?2:1),'card-number');num.append(text('small',unit));card.append(num);
-    const delta=valid(value)&&valid(reference)?value-reference:null;
-    card.append(text('div',valid(delta)?`${delta>0?'+':''}${number(delta)} ${unit==='%'?'pt':unit} / REF ${number(reference)}`:state.references.length?'比較可能なリファレンス値なし':'リファレンスを追加して比較','card-delta'),text('div',key.startsWith('event:')?`${$('transient-band').selectedOptions[0].textContent} / ${$('transient-type').value==='all'?'全タイプ':soundTypes[$('transient-type').value]} · ${note}`:key.startsWith('vocals_')&&state.vocalRanges[r.id]!=null?'手動指定区間 · '+note:note,'card-note'));$('cards').append(card);
+    const c=comparison(key,unit),delta=text('div',deltaLabel(c),'card-delta '+(c.delta>0?'higher':c.delta<0?'lower':'equal'));
+    delta.append(text('span',`REF ${number(reference,c.digits)} ${unit}`,'card-reference'));card.append(delta,text('div',key.startsWith('event:')?`${$('transient-band').selectedOptions[0].textContent} / ${$('transient-type').value==='all'?'全タイプ':soundTypes[$('transient-type').value]} · ${note}`:key.startsWith('vocals_')&&state.vocalRanges[r.id]!=null?'手動指定区間 · '+note:note,'card-note'));$('cards').append(card);
   }
   $('timeline-title').textContent=v.title;$('timeline-description').textContent=v.description;
   $('time-window').hidden=!['vocals_db','drums_db','bass_db'].includes(v.line);
@@ -438,9 +515,9 @@ function renderDashboard() {
   $('notes').replaceChildren();
   const lines=[...r.warnings];
   if(state.references.some(x=>x.max_frequency!==r.max_frequency))lines.push('周波数上限の違うリファレンスは数値比較から除外しています。');
-  if(state.tab==='spatial')lines.push('M/Sは中央と左右の楽器を完全に分離する処理ではありません。Midとモノラルの試聴はこのゲイン規約では同じ音です。Side比率とモノラル合成差は独立の指標ではありません。');
-  if(state.tab==='drums')lines.push('打音検出は包絡変化による試作版です。全帯域のタイプはオンセット後80 msの帯域比・スペクトル平坦度・重心によるルール推定であり、楽器の確定分類ではありません。重なった音や加工音は誤分類する場合があります。選択帯域は打音カード・散布図・測定状況・リファレンス比較に適用し、ドラムの相対音量と帯域競合は全帯域のままです。帯域別はフィルター後に独立検出します。帯域名は楽器名ではなく、同じ一打が複数帯域で検出される場合があります。フィルターの遅延・リンギング、特に低域の周期が測定に含まれるため、帯域間の時間差は楽器のタイミング差を意味しません。連打で150 msの窓に次の打音が入る場合、アタック／ボディ比とクレストは対象外です。減衰を測れたイベントだけの中央値には偏りがあります。');
-  if(state.tab==='density')lines.push('占有度は各曲全体を−23 LUFS相当に換算した固定閾値の試作指標です。単一の広帯域音でも高くなります。「その他」内部の楽器同士の競合は測れません。');
+  if(state.tab==='spatial')lines.push('Midは左右の和、Sideは左右の差を表します。Side比率は左右の偏りでも変化するため、左右相関と併せて確認してください。Midとモノラルの試聴は同じゲインです。');
+  if(state.tab==='drums')lines.push('打音タイプは音の帯域と形状から推定しています。帯域・タイプの選択は打音カードと散布図、REF比較に適用します。立ち上がりや減衰は帯域フィルターの影響を含みます。連打が重なる打音は一部の測定から除外します。');
+  if(state.tab==='density')lines.push('占有度は各曲全体を−23 LUFS相当に換算して測定します。パート間の競合は分離した4パート単位で集計します。');
   for(const line of lines)$('notes').append(text('p',line));
   $('method').replaceChildren(text('p',`解析バージョン ${r.version} · 共通解析レート44.1 kHz · Hann 4096点 / 50 ms間隔 / ERB 32帯域 · 比率は選択区間内のフレーム中央値。リファレンスは各曲の中央値を等重みで集約。区間端では窓が選択範囲の外を含む場合があります。`),text('p','楽器別の比率はK特性400 ms / 3秒。低域・M/Sは重み付けなし。活動判定は95パーセンタイルから−35 dB、最低−100 dBFSパワー。帯域競合は対象の有効帯域で他パートが上回る割合。聴感検証前の指標です。'));
 }
@@ -465,7 +542,7 @@ function renderRhythm(r){
   for(const id of ['rhythm-bpm','rhythm-offset','rhythm-apply'])$(id).disabled=adaptive;
   $('rhythm-bpm').value=setting?.bpm??data.bpm??'';$('rhythm-offset').value=setting?.offset??data.offset??0;
   const candidates=data.candidates.map(c=>`${number(c.bpm)} BPM`).join(' / ');
-  $('rhythm-status').textContent=`${adaptive?'可変テンポ・局所推定':setting?'手動指定':data.bpm?'自動推定':'自動推定は不確かです。BPMと開始位置を指定してください。'} · 自動候補の周期性 ${number(data.periodicity,2)}（正解確率ではありません）${candidates?' · 候補 '+candidates:''}`;
+  $('rhythm-status').textContent=`${adaptive?'可変テンポ・局所推定':setting?'手動指定':data.bpm?'自動推定':'自動推定は不確かです。BPMと開始位置を指定してください。'} · 自動候補の周期性 ${number(data.periodicity,2)}${candidates?' · 候補 '+candidates:''}`;
   const beats=rhythmBeats(r),value=median(beats.map(b=>b[key]));
   if(adaptive){const sections=(data.adaptive?.sections||[]).filter(s=>s.end>range(r)[0]&&s.start<range(r)[1]);const bpms=sections.map(s=>s.bpm).filter(valid);$('rhythm-status').textContent=`可変テンポ・局所推定 · 有効区間 ${bpms.length} / ${sections.length} · BPM ${bpms.length?number(Math.min(...bpms))+'–'+number(Math.max(...bpms)):'—'} · 不確かな区間は対象外`;}
   const reference=median(refsFor(r).map(t=>median(rhythmBeats(t).map(b=>b[key]))));
@@ -524,7 +601,7 @@ function renderDetail(r,kind){
     const total=Object.values(r.parts).reduce((a,p)=>a+p.low_power,0);
     if(!total)root.append(text('p','ステム解析で発生源の推定を表示します。','empty-chart'));
     for(const[k,p]of Object.entries(r.parts))root.append(row(names[k],number(p.low_power/total*100)+'%'));
-    root.append(text('p','分離パート内の低域エネルギー構成比。位相干渉のため、元ミックスへの厳密な寄与率ではありません。','subtle'));
+    root.append(text('p','分離パート間の低域エネルギー構成比。','subtle'));
     const normalized=stat(r,'low_normalized_db'),ref=refStat('low_normalized_db');
     root.append(row('−23 LUFS換算・低域パワー',number(normalized)+' dBFS'),row('リファレンスとの差',valid(normalized)&&valid(ref)?number(normalized-ref)+' dB':'—'));
   }else if(kind==='vocals'){
@@ -539,7 +616,7 @@ function renderDetail(r,kind){
     const canvas=document.createElement('canvas');canvas.id='ms-spectrum';canvas.setAttribute('aria-label','曲全体のM/Sスペクトル');root.append(canvas);
     drawSpectrum(r);
   }else{
-    root.append(row('占有度の下位10%',percentile(values(r,'density_pct'),.1)+'%'),row('占有度の上位10%',percentile(values(r,'density_pct'),.9)+'%'),text('p','「厚み」と「競合」を別々に見ます。密集していること自体は問題ではありません。','subtle'));
+    root.append(row('占有度の下位10%',percentile(values(r,'density_pct'),.1)+'%'),row('占有度の上位10%',percentile(values(r,'density_pct'),.9)+'%'),text('p','占有度で音の厚みを、競合率でパート同士の重なりを確認できます。','subtle'));
   }
 }
 function drawSpectrum(r){
@@ -633,7 +710,7 @@ async function initializeEngine(){
     if(!status.ready){
       $('engine-setup').hidden=false;
       $('engine-status').textContent='解析環境の設定が必要です';
-      $('engine-setup-message').textContent='必要なライブラリは公式配布元から取得します。既存のPython環境にはインストールしません。';
+      $('engine-setup-message').textContent='公式配布元からライブラリを取得し、アプリ専用のPython環境を作成します。';
       return;
     }
     displayHardware(await api.health());

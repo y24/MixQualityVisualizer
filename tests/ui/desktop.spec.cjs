@@ -15,7 +15,7 @@ test('desktop imports synthetic stems, analyzes, plays and compares cached refer
   await expect(page.locator('#engine-status')).toContainText('Python',{timeout:30000});
   await page.getByRole('button',{name:'合成デモで試す →'}).click();
   await expect(page.locator('#dashboard')).toBeVisible({timeout:90000});
-  await expect(page.locator('#cards .card-number').first()).not.toHaveText('—dB');
+  await expect(page.locator('[data-metric=vocals_db] .target-value')).not.toContainText('—');
   await expect(page.locator('#progress-panel')).toBeHidden();
   await page.getByRole('button',{name:'ドラム',exact:true}).click();
   await expect(page.locator('#transient-panel')).toBeVisible();
