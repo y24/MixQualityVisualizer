@@ -382,7 +382,8 @@ function renderTracks() {
     };
     const listen=text('button','▶ 試聴','text-button');listen.onclick=()=>{seekTrack(r,range(r)[0]);$('audio').play().catch(e=>notice(e.message));};
     const remove=text('button','外す','text-button');remove.onclick=()=>{state.references=state.references.filter(x=>x.id!==r.id);render();refreshPlayer();};
-    controls.append(apply,listen,remove);row.append(controls);$('reference-list').append(row);
+    const wave=text('button','波形で区間を選択','secondary small');wave.onclick=()=>openWaveform(r);
+    controls.append(wave,apply,listen,remove);row.append(controls);$('reference-list').append(row);
   }
   if(!state.references.length)$('reference-list').append(text('p','比較したい音源を追加してください。リファレンスはこのワークスペースにだけ追加されます。','quiet'));
 
@@ -555,21 +556,62 @@ function renderRhythm(r){
 function surface(id){const c=$(id),dpr=window.devicePixelRatio||1,w=Math.max(200,c.clientWidth),h=c.clientHeight;c.width=Math.round(w*dpr);c.height=Math.round(h*dpr);const ctx=c.getContext('2d');ctx.scale(dpr,dpr);ctx.font='10px "Segoe UI",sans-serif';return{c,ctx,w,h};}
 function blank(s,message){s.ctx.fillStyle='#8996a5';s.ctx.textAlign='center';s.ctx.fillText(message,s.w/2,s.h/2);}
 function grid(s,min,max,unit=''){const{ctx,w,h}=s;ctx.strokeStyle='#2a333d';ctx.fillStyle='#82909f';ctx.textAlign='right';for(let i=0;i<5;i++){const y=15+(h-45)*i/4;ctx.beginPath();ctx.moveTo(48,y);ctx.lineTo(w-12,y);ctx.stroke();ctx.fillText(number(max-(max-min)*i/4,unit==='%'?0:1)+unit,41,y+3);}ctx.textAlign='left';ctx.fillText('0%',48,h-6);ctx.textAlign='right';ctx.fillText('100%',w-12,h-6);}
+// Viewport is independent of the comparison range and its statistics.
+let chartView={signature:'',start:0,end:1};
+function chartWindow(r){
+  const signature=JSON.stringify([r.id,range(r)]);
+  if(chartView.signature!==signature)chartView={signature,start:0,end:1};
+  return chartView;
+}
+function chartTimes(r){const v=chartWindow(r),[a,b]=range(r);return [a+(b-a)*v.start,a+(b-a)*v.end];}
+function chartNavigation(r){
+  const v=chartWindow(r),[a,b]=chartTimes(r),span=v.end-v.start;
+  $('chart-viewport').textContent=`${a.toFixed(2)}–${b.toFixed(2)} 秒 · ${(1/span).toFixed(1)}×`;
+  $('chart-pan').disabled=span>=.999999;$('chart-pan').value=span>=1?0:v.start/(1-span);
+}
+$('chart-reset').onclick=()=>{chartView.start=0;chartView.end=1;renderDashboard();};
+$('chart-pan').oninput=()=>{const span=chartView.end-chartView.start;chartView.start=Number($('chart-pan').value)*(1-span);chartView.end=chartView.start+span;renderDashboard();};
+for(const id of ['timeline','heatmap'])$(id).addEventListener('wheel',e=>{
+  const r=state.target;if(!r||!e.deltaY&&!e.deltaX)return;
+  e.preventDefault();const v=chartWindow(r),span=v.end-v.start;
+  const rect=$(id).getBoundingClientRect(),left=id==='timeline'?48:46,right=id==='timeline'?12:7;
+  const f=Math.max(0,Math.min(1,(e.clientX-rect.left-left)/(rect.width-left-right)));
+  const delta=(e.deltaY||e.deltaX)*(e.deltaMode===1?16:e.deltaMode===2?rect.height:1);
+  const next=e.shiftKey?span:Math.max(Math.min(1,.4/(range(r)[1]-range(r)[0])),Math.min(1,span*Math.exp(Math.max(-1,Math.min(1,delta*.002)))));
+  const start=e.shiftKey?v.start+delta*.001*span:v.start+f*(span-next);
+  v.start=Math.max(0,Math.min(1-next,start));v.end=v.start+next;renderDashboard();
+},{passive:false});
 function drawTimeline(r,key){
-  const s=surface('timeline'),ids=indices(r),vals=ids.map(i=>vocalValue(r,key,i,r.series[key]?.[i]));
-  const refs=refsFor(r).map(t=>{const ix=indices(t);return ix.map(i=>vocalValue(t,key,i,t.series[key]?.[i]));}).filter(a=>a.some(valid));
-  const combined=[...vals,...refs.flat()].filter(valid);
+  const s=surface('timeline'),view=chartWindow(r),[start,end]=chartTimes(r);
+  chartNavigation(r);
+  s.c.onclick=e=>seek(start+Math.max(0,Math.min(1,(e.offsetX-48)/(s.w-60)))*(end-start));
+  const ids=indices(r),vals=ids.map(i=>vocalValue(r,key,i,r.series[key]?.[i]));
+  const refs=refsFor(r).map(t=>({track:t,ids:indices(t)})).filter(x=>x.ids.some(i=>valid(vocalValue(x.track,key,i,x.track.series[key]?.[i]))));
+  const combined=vals.concat(refs.flatMap(x=>x.ids.map(i=>vocalValue(x.track,key,i,x.track.series[key]?.[i])))).filter(valid);
   if(!combined.length){blank(s,'この項目にはステム解析または有効区間が必要です');return;}
   const pct=key.endsWith('_pct')||key.endsWith('_competition');
-  const min=pct?0:Math.min(-3,Math.floor(Math.min(...combined)/5)*5),max=pct?100:Math.max(3,Math.ceil(Math.max(...combined)/5)*5);
+  let min=pct?0:-3,max=pct?100:3;
+  if(!pct)for(const v of combined){min=Math.min(min,Math.floor(v/5)*5);max=Math.max(max,Math.ceil(v/5)*5);}
   grid(s,min,max,pct?'%':'');
-  function plot(a,color,dash=[]){const{ctx,w,h}=s;ctx.strokeStyle=color;ctx.lineWidth=1.6;ctx.setLineDash(dash);ctx.beginPath();let pen=false;a.forEach((v,i)=>{if(!valid(v)){pen=false;return;}const x=48+(w-60)*i/Math.max(1,a.length-1),y=15+(h-45)*(max-v)/(max-min);if(pen)ctx.lineTo(x,y);else ctx.moveTo(x,y);pen=true;});ctx.stroke();ctx.setLineDash([]);}
-  if(refs.length){const size=Math.max(vals.length,2);plot(Array.from({length:size},(_,i)=>median(refs.map(a=>a[Math.round(i/(size-1)*(a.length-1))]))),'#b29be3',[4,4]);}
-  plot(vals,'#6bcac2');
-  s.c.onclick=e=>{const f=Math.max(0,Math.min(1,(e.offsetX-48)/(s.w-60)));seek(range(r)[0]+f*(range(r)[1]-range(r)[0]));};
+  const {ctx,w,h}=s;ctx.clearRect(45,h-23,w-45,23);ctx.fillStyle='#82909f';
+  for(let i=0;i<=4;i++){const f=i/4;ctx.textAlign=i===0?'left':i===4?'right':'center';ctx.fillText((start+(end-start)*f).toFixed(2)+'s',48+(w-60)*f,h-6);}
+  function plot(points,color,dash=[]){ctx.save();ctx.beginPath();ctx.rect(48,15,w-60,h-45);ctx.clip();ctx.strokeStyle=color;ctx.lineWidth=1.6;ctx.setLineDash(dash);ctx.beginPath();let pen=false;
+    for(const [f,v] of points){if(!valid(v)){pen=false;continue;}const x=48+(w-60)*(f-view.start)/(view.end-view.start),y=15+(h-45)*(max-v)/(max-min);if(pen)ctx.lineTo(x,y);else ctx.moveTo(x,y);pen=true;}ctx.stroke();ctx.restore();}
+  const [a,b]=range(r),fractions=ids.map(i=>(r.times[i]-a)/(b-a));
+  if(refs.length){
+    const cursors=refs.map(()=>0);
+    plot(fractions.map(f=>[f,median(refs.map(({track,ids},j)=>{
+      const [ra,rb]=range(track),time=ra+f*(rb-ra);
+      while(cursors[j]+1<ids.length&&Math.abs(track.times[ids[cursors[j]+1]]-time)<Math.abs(track.times[ids[cursors[j]]]-time))cursors[j]++;
+      const i=ids[cursors[j]];return vocalValue(track,key,i,track.series[key]?.[i]);
+    }))]),'#b29be3',[4,4]);
+  }
+  plot(fractions.map((f,i)=>[f,vals[i]]),'#6bcac2');
 }
 function drawHeatmap(r,key){
-  const s=surface('heatmap'),data=r.heatmaps[key],ids=indices(r);
+  const [start,end]=chartTimes(r);
+  const s=surface('heatmap'),data=r.heatmaps[key],ids=r.times.map((t,i)=>t>=start&&t<end?i:-1).filter(i=>i>=0);
+  s.c.onclick=null;
   if(!data){blank(s,'ステム解析で帯域競合を表示できます');$('heatmap-legend').textContent='対象外';return;}
   const{ctx,w,h}=s,left=46,top=7,pw=w-left-7,ph=h-30,bands=r.band_centers.length;
   ctx.fillStyle='#20272e';ctx.fillRect(left,top,pw,ph);
@@ -584,11 +626,11 @@ function drawHeatmap(r,key){
     }
   }
   ctx.fillStyle='#8996a5';ctx.textAlign='right';for(const f of [60,200,1000,6000,16000]){const k=r.band_centers.reduce((best,v,i)=>Math.abs(v-f)<Math.abs(r.band_centers[best]-f)?i:best,0);ctx.fillText(f>=1000?`${f/1000}k`:`${f}`,left-7,top+(bands-k-.5)*ph/bands+3);}
-  ctx.textAlign='left';ctx.fillText(duration(range(r)[0]),left,h-4);ctx.textAlign='right';ctx.fillText(duration(range(r)[1]),w-7,h-4);
+  ctx.textAlign='left';ctx.fillText(start.toFixed(2)+'s',left,h-4);ctx.textAlign='right';ctx.fillText(end.toFixed(2)+'s',w-7,h-4);
   $('heatmap-legend').textContent=key==='side_pct'?'濃青 0% → 明黄 100% Side / 灰色：無音':key==='spectrum_db'?'濃青 −75 dB → 明黄 −10 dB（帯域パワー）':'濃青 +18 dB（対象優勢）→ 明黄 −18 dB（他パート優勢）/ 灰色：対象外';
   if(key==='mono_db')$('heatmap-legend').textContent='濃青 0 dB → 明黄 −24 dB / 灰色：無音または完全キャンセル';
   if(key==='band_correlation')$('heatmap-legend').textContent='濃青 +1 → 明黄 −1 / 灰色：片側または両側の信号なし';
-  s.c.onclick=e=>seek(range(r)[0]+Math.max(0,Math.min(1,(e.offsetX-left)/pw))*(range(r)[1]-range(r)[0]));
+  s.c.onclick=e=>seek(start+Math.max(0,Math.min(1,(e.offsetX-left)/pw))*(end-start));
 }
 function row(label,value){const e=text('div','','metric-row');e.append(text('span',label),text('strong',value));return e;}
 function renderDetail(r,kind){

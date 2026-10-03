@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; media-src 'self' mqv:; connect-src 'none'; object-src 'none'; base-uri 'none'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; media-src 'self' mqv:; connect-src mqv:; object-src 'none'; base-uri 'none'">
   <title>Mix Atlas — ミックス解析</title>
   <link rel="stylesheet" href="styles.css">
 </head>
@@ -46,7 +46,7 @@
       <div class="empty-features"><div><b>01</b>声と伴奏の距離</div><div><b>02</b>リズムと低域の存在感</div><div><b>03</b>広がりと音の重なり</div></div>
     </section>
     <section id="dashboard" hidden>
-      <div class="range-bar"><div><span class="eyebrow">比較する区間</span><span class="subtle">曲ごとに近い編成の区間を選択</span></div><div><label>開始 <input id="range-start" type="number" min="0" step="0.1" value="0"> 秒</label><span>—</span><label>終了 <input id="range-end" type="number" min="0" step="0.1"> 秒</label><button id="range-apply" class="secondary small">適用</button><button id="range-reset" class="text-button">全体</button></div></div>
+      <div class="range-bar"><div><span class="eyebrow">比較する区間</span><span class="subtle">曲ごとに近い編成の区間を選択</span></div><div><button id="range-waveform" class="secondary small">波形で区間を選択</button><label>開始 <input id="range-start" type="number" min="0" step="0.1" value="0"> 秒</label><span>—</span><label>終了 <input id="range-end" type="number" min="0" step="0.1"> 秒</label><button id="range-apply" class="secondary small">適用</button><button id="range-reset" class="text-button">全体</button></div></div>
       <details id="structure-panel" class="panel"><summary>音色・編成の変化から比較区間を選ぶ（候補）</summary>
         <p class="subtle">音色・編成が変わる位置を表示します。試聴して比較する区間を選んでください。</p>
         <div class="range-bar"><label>曲<select id="structure-track" aria-label="区間候補の曲"></select></label><label>区間<select id="structure-segment" aria-label="構成区間候補"></select></label><button id="structure-apply" class="secondary small">この曲の比較区間に適用</button><button id="structure-listen" class="text-button">区間の先頭へ移動</button></div>
@@ -59,7 +59,7 @@
       </div>
       <section id="overview-summary" hidden aria-label="ミックス全体の比較"></section>
       <div id="cards" class="cards"></div>
-      <div class="panel timeline-panel"><div class="panel-heading"><div><h2 id="timeline-title">相対音量の推移</h2><p id="timeline-description"></p></div><div class="legend"><span class="target-key">解析対象</span><span class="reference-key">リファレンス中央値</span><select id="time-window" aria-label="時間窓"><option value="momentary">400 ms</option><option value="short">3 秒</option></select></div></div><canvas id="timeline" height="210" aria-label="時間推移グラフ"></canvas><div class="chart-footer"><span>クリックで該当位置を試聴</span><span>各曲の選択区間を0–100%で表示</span></div></div>
+      <div class="panel timeline-panel"><div class="panel-heading"><div><h2 id="timeline-title">相対音量の推移</h2><p id="timeline-description"></p></div><div class="legend"><span class="target-key">解析対象</span><span class="reference-key">リファレンス中央値</span><select id="time-window" aria-label="時間窓"><option value="momentary">400 ms</option><option value="short">3 秒</option></select></div></div><div class="chart-navigation"><button id="chart-reset" class="secondary small">全区間</button><span id="chart-viewport" class="subtle"></span><input id="chart-pan" type="range" min="0" max="1" step="0.001" value="0" aria-label="グラフの表示位置"></div><canvas id="timeline" height="210" aria-label="時間推移グラフ"></canvas><div class="chart-footer"><span>ホイールで拡大・縮小 · Shift＋ホイールで横移動 · クリックで試聴</span><span>REFは各曲の選択区間の同じ割合を表示</span></div></div>
       <div id="detail-panels" class="two-columns"><div class="panel"><div class="panel-heading"><div><h2 id="heatmap-title">帯域の分布</h2><p id="heatmap-description"></p></div><select id="component" aria-label="競合を解析する成分"><option value="stereo">Stereo</option><option value="mid">Mid</option><option value="side">Side</option></select><select id="spatial-metric" aria-label="音像の帯域指標" hidden><option value="side_pct">Side比率</option><option value="mono_db">モノラル合成差</option><option value="band_correlation">帯域別左右相関</option></select></div><canvas id="heatmap" height="230" aria-label="時間周波数ヒートマップ"></canvas><div id="heatmap-legend" class="chart-footer"></div></div><div class="panel"><div class="panel-heading"><div><h2 id="detail-title">帯域バランス</h2><p id="detail-description">選択区間の特徴</p></div></div><div id="detail"></div></div></div>
       <div id="rhythm-panel" class="panel" hidden><h2>拍に沿ったドラムの強さ</h2>
       <label>拍の追跡方法<select id="rhythm-mode"><option value="fixed">固定テンポ</option><option value="adaptive">可変テンポ（局所推定）</option></select></label><p id="rhythm-status" class="subtle"></p><div class="range-bar"><label>BPM <input id="rhythm-bpm" type="number" min="30" max="300" step="0.1"></label><label>最初の拍（秒） <input id="rhythm-offset" type="number" min="0" step="0.01"></label><button id="rhythm-apply" class="secondary small">拍を指定</button><button id="rhythm-auto" class="text-button">自動候補に戻す</button><select id="rhythm-metric" aria-label="拍の指標"><option value="relative_db">非ドラムに対するレベル</option><option value="accent_db">周辺に対するアクセント</option></select></div>
@@ -70,6 +70,15 @@
     </section>
   </main>
   <div class="transport"><div class="transport-label"><span class="status-dot"></span><div><strong id="playing-name">音源未選択</strong><small id="preview-gain">ゲイン補正なし</small></div></div><select id="listen-track" aria-label="試聴する曲" disabled></select><select id="listen-source" aria-label="試聴する成分" disabled><option value="mix">元ステレオ</option></select><audio id="audio" controls preload="metadata"></audio></div>
+  <dialog id="range-dialog" aria-labelledby="range-title">
+    <div class="dialog-heading"><h2 id="range-title">波形で比較区間を選択</h2><p id="range-track-name" class="subtle"></p></div>
+    <p class="subtle">波形をドラッグして範囲を選択。両端のハンドルで長さを調整、選択範囲の中央をドラッグして移動できます。</p>
+    <p id="waveform-status" class="subtle" role="status"></p>
+    <canvas id="range-wave" aria-label="比較区間を選択する音源波形"></canvas>
+    <div class="wave-fields"><label>開始（秒）<input id="wave-start" type="number" min="0" step="0.01"></label><label>終了（秒）<input id="wave-end" type="number" min="0" step="0.01"></label><span id="wave-duration" class="subtle"></span><button id="wave-all" class="secondary small">曲全体</button></div>
+    <p id="wave-error" class="error" role="alert"></p>
+    <div class="dialog-actions"><button id="wave-cancel" class="secondary">キャンセル</button><button id="wave-apply" class="primary">この区間を適用</button></div>
+  </dialog>
   <dialog id="import-dialog"><form id="import-form">
     <div class="dialog-heading"><h2 id="import-title">解析する音源</h2></div>
     <button id="choose-mix" type="button" class="file-picker">＋ ミックス音源を選択</button>
@@ -88,6 +97,6 @@
     <p id="library-destination" class="subtle"></p><p id="library-error" class="error" role="status"></p><div class="library-scroll"><table class="library-table"><thead><tr><th scope="col" class="library-check"><input id="library-select-all" type="checkbox" aria-label="表示中の曲をすべて選択"></th><th scope="col">再生</th><th scope="col" aria-sort="none"><button class="library-sort" data-sort="name">ファイル名 / パス<span aria-hidden="true"> ↕</span></button></th><th scope="col" aria-sort="none"><button class="library-sort" data-sort="duration">長さ<span aria-hidden="true"> ↕</span></button></th><th scope="col" aria-sort="none"><button class="library-sort" data-sort="vocals_db">声と伴奏<br>バランス (dB)<span aria-hidden="true"> ↕</span></button></th><th scope="col" aria-sort="none"><button class="library-sort" data-sort="drums_db">ドラム<br>相対音量 (dB)<span aria-hidden="true"> ↕</span></button></th><th scope="col" aria-sort="none"><button class="library-sort" data-sort="low_pct">低域比率<br>(%)<span aria-hidden="true"> ↕</span></button></th><th scope="col" aria-sort="none"><button class="library-sort" data-sort="side_pct">Side比率<br>(%)<span aria-hidden="true"> ↕</span></button></th><th scope="col">解析方法 / 状態</th><th scope="col">追加先</th></tr></thead><tbody id="history-items"></tbody></table></div>
     <div class="library-preview"><span id="library-playing" class="subtle">▶ で試聴</span><audio id="library-audio" controls preload="none"></audio></div>
     <div class="dialog-actions"><button id="history-close" class="secondary">閉じる</button></div></dialog>
-  <script src="envelopes.js"></script><script src="rhythm.js"></script><script src="vocal-ranges.js"></script><script src="app.js"></script>
+  <script src="envelopes.js"></script><script src="rhythm.js"></script><script src="vocal-ranges.js"></script><script src="app.js"></script><script src="waveform.js"></script>
 </body>
 </html>

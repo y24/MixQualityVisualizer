@@ -13,7 +13,7 @@ const ANALYSIS_VERSION = JSON.parse(fs.readFileSync(path.join(ROOT,'analysis-ver
 const PROFILE = process.env.MQV_TEST_PROFILE==='1' ? path.join(ROOT,'.cache','ui-test-profile') : path.join(ROOT,'.data');
 app.setPath('userData', path.join(PROFILE, 'desktop'));
 app.setPath('sessionData', path.join(PROFILE, 'session'));
-protocol.registerSchemesAsPrivileged([{ scheme: 'mqv', privileges: { standard: true, secure: true, stream: true, supportFetchAPI: true } }]);
+protocol.registerSchemesAsPrivileged([{ scheme: 'mqv', privileges: { standard: true, secure: true, stream: true, supportFetchAPI: true, corsEnabled: true } }]);
 const allowed = new Set();
 const media = new Map();
 let win, activeJob, library;
@@ -74,11 +74,15 @@ function exposeResult(result) {
 app.whenReady().then(() => {
   library = new Library(path.join(PROFILE, 'library.sqlite'));
   library.importCaches(path.join(ROOT, '.data', 'analyses'));
-  protocol.handle('mqv', request => {
+  protocol.handle('mqv', async request => {
     const url = new URL(request.url);
     const filename = url.hostname === 'audio' && media.get(url.pathname.slice(1));
     if (!filename) return new Response('Not found', { status: 404 });
-    return net.fetch(pathToFileURL(filename).toString(), { headers: request.headers });
+    const response = await net.fetch(pathToFileURL(filename).toString(), { headers: request.headers });
+    const headers = new Headers(response.headers);
+    // The packaged UI has a file: (null) origin; only registered audio tokens are served.
+    headers.set('Access-Control-Allow-Origin', 'null');
+    return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
   });
   // Renderer has no network access. Package managers and Python fetch dependencies/models.
   session.defaultSession.webRequest.onBeforeRequest((details, cb) => {
